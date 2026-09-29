@@ -100,7 +100,8 @@
                   "bus_sync_handshake" "avalon_mm_regs" "bfm_util_pkg"
                   "bfm_axis_pkg" "bfm_avalon_st_pkg" "bfm_axilite_pkg"
                   "bfm_avalon_mm_pkg" "bfm_uart_pkg" "bfm_spi_pkg"
-                  "testbench_bfm" "spi_slave"))
+                  "testbench_bfm" "spi_slave" "i2c_master" "i2c_slave"
+                  "bfm_i2c_pkg"))
     (should (assoc name (vhdl-tpl--list 'templates))))
   (should (>= (length (vhdl-tpl--list 'snippets)) 15)))
 

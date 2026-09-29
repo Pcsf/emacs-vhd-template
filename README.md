@@ -3,7 +3,7 @@
 VHDL and FPGA file templates for Emacs. It uses only what ships with Emacs
 (`auto-insert`, `completing-read`, `vhdl-mode`), with no packages to install.
 
-- Open a new `foo.vhd` and pick a template from a list of 41, the things an
+- Open a new `foo.vhd` and pick a template from a list of 44, the things an
   FPGA engineer keeps re-writing: entity, testbench, FSM, CDC synchronizers
   (including a handshake bus synchronizer and an async FIFO), UART, SPI,
   AXI-Lite, AXI-Stream and Avalon blocks, bus functional models (BFMs) to
@@ -126,6 +126,8 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 | `uart_tx`, `uart_rx` | UART 8N1, baud rate from `G_CLK_HZ` / `G_BAUD`; TX has valid/ready, RX samples mid-bit and flags framing errors |
 | `spi_master`      | SPI master, mode 0, 8 bits MSB first, start/busy/done |
 | `spi_slave`       | SPI slave: any mode, MSB or LSB first, any word width, optional tri-state MISO. Runs on the system clock (no SCLK-clocked logic, so no extra clock domain); needs `clk` at least 4 times SCLK |
+| `i2c_master`      | I2C master: one command per byte (optional START, write or read a byte, optional STOP), so any transaction incl. repeated START; clock stretching; open-drain pins as `*_i` / `*_oe`. Single master, 7-bit addresses |
+| `i2c_slave`       | I2C slave: 7-bit address, `addr_match` / `rx_data` / `tx_req` / `start_evt` / `stop_evt` byte interface, runs on the system clock (needs `clk` at least 8 times SCL), does not stretch |
 | `axis_skid`       | AXI4-Stream register slice (skid buffer): registered data and ready, full throughput |
 | `axi_lite_regs`   | AXI4-Lite slave with a register map (CONTROL, STATUS, SCRATCH, VERSION), byte strobes, SLVERR on read-only writes |
 | `avalon_mm_regs`  | Avalon-MM slave with the same register map, byteenable, one wait state per access, `readdatavalid` |
@@ -141,6 +143,7 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 | `bfm_avalon_mm_pkg` | Avalon-MM master: write, read, check; `waitrequest`, `readdatavalid`, byteenable |
 | `bfm_uart_pkg`      | UART transmit, receive, expect: 5-8 data bits, parity, 1-2 stop bits, parity and framing error injection |
 | `bfm_spi_pkg`       | SPI master and slave: modes 0-3, MSB or LSB first, 1-32 bits per word |
+| `bfm_i2c_pkg`       | I2C master and slave: transmit, receive, check; repeated START, address NACK, slave clock stretching |
 
 **Verification and project files**
 
@@ -211,8 +214,8 @@ How they work, common to all of them:
 - **What is not modelled:** AXI-Stream `tkeep` / `tstrb` / `tid` / `tdest` /
   `tuser`, Avalon-ST `empty` / `channel` / `error`, pipelined or burst
   Avalon-MM and AXI4-Lite outstanding transactions. Add fields to the records
-  and procedures as you need them; the packages are short on purpose. I2C is
-  not included.
+  and procedures as you need them; the packages are short on purpose. The I2C
+  BFM has no 10-bit addressing and no arbitration.
 
 ## Customising
 
@@ -297,7 +300,7 @@ make project  # run the rendered ghdl_makefile on a small rtl/ + tb/ project
 make check    # all three
 ```
 
-`make sim` runs five testbenches:
+`make sim` runs six testbenches:
 
 - `entity_arch_tb`: the rendered `testbench` template against `entity_arch`.
 - `axis_skid_tb`: the rendered `testbench_bfm` template against `axis_skid`.
@@ -312,6 +315,13 @@ make check    # all three
   mode / word format combinations: two normal frames, a frame one clock short
   (no `rx_valid`), a frame one clock long (first bits delivered once), and a
   normal frame again.
+- `test/tb_i2c.vhd`: four bus pairings. `i2c_master` against the slave BFM
+  (write, read, write then read with a repeated START, address NACK, a slave
+  that stretches SCL), the master BFM against `i2c_slave` on a register file
+  (pointer byte, write, read back, wrong address, START and STOP counts),
+  `i2c_master` against `i2c_slave`, and master BFM against slave BFM. The bus
+  is modelled open-drain with a weak pull-up, and a monitor proves that the
+  stretching slave really held SCL low.
 - `test/tb_functional.vhd`: counter, sync FIFO (including a write to a full
   and a read from an empty FIFO), two-process module, edge detector, both
   synchronizers.
