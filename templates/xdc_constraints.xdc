@@ -12,6 +12,11 @@ set_false_path -from [get_ports rst_n]
 ## Outputs
 set_property -dict { PACKAGE_PIN {{led_pin|H5}} IOSTANDARD {{iostd}} } [get_ports led]
 
+## I2C (i2c_master / i2c_slave): open-drain pads need a pull-up, internal or external
+# set_property -dict { PACKAGE_PIN <pin> IOSTANDARD LVCMOS33 PULLUP true } [get_ports i2c_scl]
+# set_property -dict { PACKAGE_PIN <pin> IOSTANDARD LVCMOS33 PULLUP true } [get_ports i2c_sda]
+# set_false_path -from [get_ports {i2c_scl i2c_sda}]
+
 ## Configuration
 set_property CFGBVS VCCO [current_design]
 set_property CONFIG_VOLTAGE 3.3 [current_design]
