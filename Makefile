@@ -18,13 +18,16 @@ GHDLFLAGS := --std=08 --workdir=$(WORK)
 UNITS := my_pkg two_process_pkg two_process entity_arch fsm counter sync_2ff \
          reset_sync fifo_sync ram_sdp edge_detect top_level debounce \
          pulse_sync fifo_async pwm lfsr shift_reg rom_lut mac_dsp uart_tx \
-         uart_rx spi_master axis_skid axi_lite_regs entity_arch_tb
+         uart_rx spi_master axis_skid axi_lite_regs avalon_mm_regs \
+         bus_sync_handshake bfm_util_pkg bfm_axis_pkg bfm_avalon_st_pkg \
+         bfm_axilite_pkg bfm_avalon_mm_pkg bfm_uart_pkg bfm_spi_pkg \
+         entity_arch_tb axis_skid_tb
 # Entities to elaborate on their own (the testbenches are run below).
 ENTITIES := two_process entity_arch fsm counter sync_2ff reset_sync fifo_sync \
             ram_sdp edge_detect top_level debounce pulse_sync fifo_async pwm \
             lfsr shift_reg rom_lut mac_dsp uart_tx uart_rx spi_master \
-            axis_skid axi_lite_regs
-TESTBENCHES := entity_arch_tb tb_functional tb_functional_ip
+            axis_skid axi_lite_regs avalon_mm_regs bus_sync_handshake
+TESTBENCHES := entity_arch_tb axis_skid_tb tb_functional tb_functional_ip tb_bfm
 
 .PHONY: check test render sim project clean
 
@@ -44,7 +47,8 @@ sim: render
 	set -e; for u in $(UNITS); do \
 	  $(GHDL) -a $(GHDLFLAGS) $(RENDERED)/$$u.vhd; \
 	done
-	$(GHDL) -a $(GHDLFLAGS) test/tb_functional.vhd test/tb_functional_ip.vhd
+	$(GHDL) -a $(GHDLFLAGS) test/tb_functional.vhd test/tb_functional_ip.vhd \
+	  test/tb_bfm.vhd
 	set -e; for e in $(ENTITIES); do \
 	  $(GHDL) -e $(GHDLFLAGS) $$e; \
 	done
