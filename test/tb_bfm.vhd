@@ -5,8 +5,162 @@
 --   Avalon-MM         BFM master -> avalon_mm_regs (one wait state per access)
 --   UART              BFM -> uart_rx, uart_tx -> BFM, BFM <-> BFM formats and errors
 --   SPI               BFM slave <-> spi_master, BFM master <-> reference slave
---                     written separately here, BFM master <-> BFM slave
+--                     written separately here, BFM master <-> BFM slave,
+--                     BFM master -> spi_slave in all modes and word formats
 -- Run by `make check'.
+
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+use work.bfm_util_pkg.all;
+use work.bfm_spi_pkg.all;
+
+-- The master BFM talks to one spi_slave configured for one mode, word width
+-- and bit order: two frames with different data in both directions.
+entity tb_spi_slave_bench is
+  generic (
+    G_MODE  : natural range 0 to 3;
+    G_WIDTH : positive range 2 to 32;
+    G_MSB   : boolean
+  );
+  port (
+    clk  : in  std_logic;
+    rst  : in  std_logic;
+    done : out std_logic := '0'
+  );
+end entity tb_spi_slave_bench;
+
+architecture sim of tb_spi_slave_bench is
+
+  function make_config return t_spi_bfm_config is
+    variable v_cfg : t_spi_bfm_config :=
+      (cpol => '0', cpha => '0', sclk_period => 100 ns, msb_first => G_MSB,
+       word_width => G_WIDTH, cs_setup => 100 ns, cs_hold => 100 ns, timeout => 100 us);
+  begin
+    if G_MODE >= 2 then
+      v_cfg.cpol := '1';
+    end if;
+    if (G_MODE mod 2) = 1 then
+      v_cfg.cpha := '1';
+    end if;
+    return v_cfg;
+  end function make_config;
+
+  constant C_CFG : t_spi_bfm_config := make_config;
+  function order_name return string is
+  begin
+    if G_MSB then
+      return " msb";
+    else
+      return " lsb";
+    end if;
+  end function order_name;
+
+  constant C_TAG : string := "spi_slave mode " & integer'image(G_MODE) & " width "
+                             & integer'image(G_WIDTH) & order_name;
+
+  signal m2s      : t_spi_m2s := spi_m2s_idle(C_CFG);
+  signal s2m      : t_spi_s2m;
+  signal tx_data  : std_logic_vector(G_WIDTH - 1 downto 0) := (others => '0');
+  signal rx_data  : std_logic_vector(G_WIDTH - 1 downto 0);
+  signal rx_valid : std_logic;
+  signal active   : std_logic;
+
+  signal got_data  : std_logic_vector(G_WIDTH - 1 downto 0) := (others => '0');
+  signal got_count : natural := 0;
+
+  type t_words is array (0 to 1) of std_logic_vector(31 downto 0);
+  constant C_MASTER_WORDS : t_words := (x"A6C35A19", x"1B5D8E72");
+  constant C_SLAVE_WORDS  : t_words := (x"9E4B27D1", x"E4013C6A");
+
+  function low (v : std_logic_vector(31 downto 0)) return std_logic_vector is
+  begin
+    return v(G_WIDTH - 1 downto 0);
+  end function low;
+
+begin
+
+  u_dut : entity work.spi_slave
+    generic map (G_WIDTH => G_WIDTH, G_CPOL => C_CFG.cpol, G_CPHA => C_CFG.cpha,
+                 G_MSB_FIRST => G_MSB)
+    port map (clk => clk, rst => rst, sclk => m2s.sclk, cs_n => m2s.cs_n,
+              mosi => m2s.mosi, miso => s2m.miso, tx_data => tx_data,
+              rx_data => rx_data, rx_valid => rx_valid, active => active);
+
+  p_capture : process (clk)
+  begin
+    if rising_edge(clk) then
+      if rx_valid = '1' then
+        got_data  <= rx_data;
+        got_count <= got_count + 1;
+      end if;
+    end if;
+  end process p_capture;
+
+  p_master : process
+    variable v_rx  : t_spi_word;
+    variable v_n   : natural;
+    variable v_cfg : t_spi_bfm_config;
+
+    -- A normal frame: both words arrive, one rx_valid pulse.
+    procedure full_frame (i : natural) is
+    begin
+      tx_data <= low(C_SLAVE_WORDS(i));
+      wait for 50 ns;
+      v_n := got_count;
+      spi_master_transfer(C_MASTER_WORDS(i), v_rx, C_TAG & " frame " & integer'image(i),
+                          m2s, s2m, C_TAG, C_CFG);
+      wait for 30 ns;
+      bfm_check_value(v_rx(G_WIDTH - 1 downto 0), low(C_SLAVE_WORDS(i)),
+                      C_TAG & ": master receives the slave word, frame " & integer'image(i), C_TAG);
+      bfm_check(got_count = v_n + 1, C_TAG & ": one rx_valid pulse, frame " & integer'image(i), C_TAG);
+      bfm_check_value(got_data, low(C_MASTER_WORDS(i)),
+                      C_TAG & ": slave receives the master word, frame " & integer'image(i), C_TAG);
+      bfm_check(active = '0', C_TAG & ": not active after CS rises", C_TAG);
+    end procedure full_frame;
+  begin
+    wait until rst = '0';
+    wait for 200 ns;
+    full_frame(0);
+    full_frame(1);
+
+    -- CS rises one bit early: no rx_valid.
+    v_cfg := C_CFG;
+    v_cfg.word_width := G_WIDTH - 1;
+    tx_data <= low(C_SLAVE_WORDS(0));
+    wait for 50 ns;
+    v_n := got_count;
+    spi_master_transfer(C_MASTER_WORDS(0), v_rx, C_TAG & " short frame", m2s, s2m, C_TAG, v_cfg);
+    wait for 30 ns;
+    bfm_check(got_count = v_n, C_TAG & ": no rx_valid for a short frame", C_TAG);
+
+    -- One clock too many: the first G_WIDTH bits are delivered once, the rest ignored.
+    if G_WIDTH < 32 then
+      v_cfg := C_CFG;
+      v_cfg.word_width := G_WIDTH + 1;
+      tx_data <= low(C_SLAVE_WORDS(1));
+      wait for 50 ns;
+      v_n := got_count;
+      spi_master_transfer(C_MASTER_WORDS(1), v_rx, C_TAG & " long frame", m2s, s2m, C_TAG, v_cfg);
+      wait for 30 ns;
+      bfm_check(got_count = v_n + 1, C_TAG & ": one rx_valid for a long frame", C_TAG);
+      if G_MSB then   -- the first G_WIDTH bits on the wire
+        bfm_check_value(got_data, C_MASTER_WORDS(1)(G_WIDTH downto 1),
+                        C_TAG & ": long frame keeps the first bits", C_TAG);
+      else
+        bfm_check_value(got_data, low(C_MASTER_WORDS(1)),
+                        C_TAG & ": long frame keeps the first bits", C_TAG);
+      end if;
+    end if;
+
+    -- Back to normal after both.
+    full_frame(0);
+    done <= '1';
+    wait;
+  end process p_master;
+
+end architecture sim;
 
 library ieee;
 use ieee.std_logic_1164.all;
@@ -32,6 +186,7 @@ architecture sim of tb_bfm is
   signal rst  : std_logic := '1';
   signal stop : boolean   := false;
   signal done : std_logic_vector(0 to 18) := (others => '0');
+  signal slave_done : std_logic_vector(0 to 19) := (others => '0');
 
   ---------------------------------------------------------------------------
   -- AXI-Stream and Avalon-ST
@@ -662,13 +817,26 @@ begin
   end process p_spi_bfm_slave;
 
   ---------------------------------------------------------------------------
+  -- SPI: master BFM -> spi_slave, every mode and word format
+  ---------------------------------------------------------------------------
+  gen_slave_mode : for m in 0 to 3 generate
+    gen_slave_word : for w in C_SPI_WORD_CASES'range generate
+      u_bench : entity work.tb_spi_slave_bench
+        generic map (G_MODE => m, G_WIDTH => C_SPI_WORD_CASES(w).width,
+                     G_MSB => C_SPI_WORD_CASES(w).msb)
+        port map (clk => clk, rst => rst, done => slave_done(m * C_SPI_WORD_CASES'length + w));
+    end generate gen_slave_word;
+  end generate gen_slave_mode;
+
+  ---------------------------------------------------------------------------
   -- Verdict
   ---------------------------------------------------------------------------
   p_verdict : process
   begin
-    wait until done = (done'range => '1') for 2 ms;
-    if done /= (done'range => '1') then
-      bfm_alert(ERROR, "timeout, blocks not finished: " & to_string(done), C_SCOPE);
+    wait until done = (done'range => '1') and slave_done = (slave_done'range => '1') for 2 ms;
+    if done /= (done'range => '1') or slave_done /= (slave_done'range => '1') then
+      bfm_alert(ERROR, "timeout, blocks not finished: " & to_string(done)
+                & " / " & to_string(slave_done), C_SCOPE);
     end if;
     wait for 100 ns;
     bfm_report_final(C_SCOPE);

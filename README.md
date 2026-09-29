@@ -3,7 +3,7 @@
 VHDL and FPGA file templates for Emacs. It uses only what ships with Emacs
 (`auto-insert`, `completing-read`, `vhdl-mode`), with no packages to install.
 
-- Open a new `foo.vhd` and pick a template from a list of 40, the things an
+- Open a new `foo.vhd` and pick a template from a list of 41, the things an
   FPGA engineer keeps re-writing: entity, testbench, FSM, CDC synchronizers
   (including a handshake bus synchronizer and an async FIFO), UART, SPI,
   AXI-Lite, AXI-Stream and Avalon blocks, bus functional models (BFMs) to
@@ -125,6 +125,7 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 |-------------------|----------|
 | `uart_tx`, `uart_rx` | UART 8N1, baud rate from `G_CLK_HZ` / `G_BAUD`; TX has valid/ready, RX samples mid-bit and flags framing errors |
 | `spi_master`      | SPI master, mode 0, 8 bits MSB first, start/busy/done |
+| `spi_slave`       | SPI slave: any mode, MSB or LSB first, any word width, optional tri-state MISO. Runs on the system clock (no SCLK-clocked logic, so no extra clock domain); needs `clk` at least 4 times SCLK |
 | `axis_skid`       | AXI4-Stream register slice (skid buffer): registered data and ready, full throughput |
 | `axi_lite_regs`   | AXI4-Lite slave with a register map (CONTROL, STATUS, SCRATCH, VERSION), byte strobes, SLVERR on read-only writes |
 | `avalon_mm_regs`  | Avalon-MM slave with the same register map, byteenable, one wait state per access, `readdatavalid` |
@@ -307,6 +308,10 @@ make check    # all three
   7E1, 8O2, 5N1 and injected parity and framing errors, SPI slave against
   `spi_master`, and the SPI master in all four modes and five word formats
   against a separately written reference slave and against the slave BFM.
+  The `spi_slave` template runs against the master BFM in the same 20
+  mode / word format combinations: two normal frames, a frame one clock short
+  (no `rx_valid`), a frame one clock long (first bits delivered once), and a
+  normal frame again.
 - `test/tb_functional.vhd`: counter, sync FIFO (including a write to a full
   and a read from an empty FIFO), two-process module, edge detector, both
   synchronizers.
