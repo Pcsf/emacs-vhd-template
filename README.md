@@ -3,11 +3,13 @@
 VHDL and FPGA file templates for Emacs. It uses only what ships with Emacs
 (`auto-insert`, `completing-read`, `vhdl-mode`), with no packages to install.
 
-- Open a new `foo.vhd` and pick a template from a list: entity, testbench,
-  FSM, FIFO, CDC synchronizer, FPGA top level, and more.
+- Open a new `foo.vhd` and pick a template from a list of 30, the things an
+  FPGA engineer keeps re-writing: entity, testbench, FSM, CDC synchronizers,
+  async FIFO, UART, SPI, AXI-Lite and AXI-Stream blocks, top level, GHDL and
+  Vivado scripts, constraints.
 - Insert snippets at point: clocked process, `case`, `generate`, entity
   instance, and more. They are indented to fit the surrounding code.
-- Constraint templates fill new `.xdc` (Vivado) and `.sdc` files.
+- New `.xdc` (Vivado) and `.sdc` files are filled with a constraints template.
 - Templates are plain `.vhd` files, not Elisp. Edit them with any editor,
   add your own, or override the bundled ones from your own directory.
 
@@ -76,36 +78,76 @@ Suggested file names:
 ## What is included
 
 All VHDL is VHDL-2008, uses `ieee.numeric_std`, and has synchronous
-active-high reset unless noted.
+active-high reset unless noted. Every template is analysed, elaborated and
+simulated with GHDL by `make check` (see [Tests](#tests)).
 
 ### File templates (`templates/`)
 
-| Template                          | Contents |
-|-----------------------------------|----------|
-| `entity_arch`                     | Entity and RTL architecture: generic width, clocked process, sync reset |
-| `two_process_pkg`, `two_process`  | Gaisler two-process style: port records and component package, then `comb` and `regs` processes with a `reg_type` record and `REG_RESET` |
-| `package`                         | Package and body: constants, types, `clog2` |
-| `testbench`                       | Self-checking testbench: clock that stops itself, reset, `check` and `tick` helpers, `TEST PASSED` / `severity failure` |
-| `fsm`                             | State register, next-state process, Moore outputs, recovery from illegal states |
-| `counter`                         | Modulo-N counter with enable and wrap strobe |
-| `edge_detect`                     | Rising, falling or any-edge pulse, chosen by a generic |
-| `sync_2ff`                        | CDC: N-flop single-bit synchronizer, `ASYNC_REG` (Xilinx), Quartus attribute as comment |
-| `reset_sync`                      | CDC: reset that asserts asynchronously and releases synchronously |
-| `fifo_sync`                       | Single-clock FIFO with full/empty flags and block RAM inference |
-| `ram_sdp`                         | Simple dual-port RAM, `ram_style` attribute |
-| `top_level`                       | FPGA top: board clock and reset button, `reset_sync`, blinking LED (needs `reset_sync` and `counter`) |
-| `xdc_constraints`                 | Vivado: clock, pins, false path on reset, CDC and I/O delay examples (Arty A7 pins as example) |
-| `sdc_constraints`                 | SDC (Quartus and others): clock, reset, I/O delays |
+**Design basics**
+
+| Template          | Contents |
+|-------------------|----------|
+| `entity_arch`     | Entity and RTL architecture: generic width, clocked process, sync reset |
+| `two_process_pkg`, `two_process` | Gaisler two-process style: port records and component package, then `comb` and `regs` processes with a `reg_type` record and `REG_RESET` |
+| `package`         | Package and body: constants, types, `clog2` |
+| `fsm`             | State register, next-state process, Moore outputs, recovery from illegal states |
+| `counter`         | Modulo-N counter with enable and wrap strobe |
+| `edge_detect`     | Rising, falling or any-edge pulse, chosen by a generic |
+| `debounce`        | Button debouncer: input synchronizer plus stability counter, time set in ms |
+| `pwm`             | PWM generator |
+| `lfsr`            | LFSR / PRBS generator, maximal length |
+| `top_level`       | FPGA top: board clock and reset button, `reset_sync`, blinking LED (needs `reset_sync` and `counter`) |
+
+**Clock domain crossing**
+
+| Template          | Contents |
+|-------------------|----------|
+| `sync_2ff`        | N-flop single-bit synchronizer, `ASYNC_REG` (Xilinx), Quartus attribute as comment |
+| `reset_sync`      | Reset that asserts asynchronously and releases synchronously |
+| `pulse_sync`      | Single-pulse transfer between two clocks (toggle method) |
+| `fifo_async`      | Asynchronous FIFO: Gray-coded pointers, registered full/empty, two clocks and resets |
+
+**Memory and datapath**
+
+| Template          | Contents |
+|-------------------|----------|
+| `fifo_sync`       | Single-clock FIFO with full/empty flags and block RAM inference |
+| `ram_sdp`         | Simple dual-port RAM, `ram_style` attribute |
+| `rom_lut`         | ROM / lookup table filled by a function (sine table), block RAM inference |
+| `shift_reg`       | Delay line without reset, maps to SRL / shift-register RAM |
+| `mac_dsp`         | Multiply-accumulate with input, multiplier and accumulator registers, DSP block inference |
+
+**Interfaces and protocols**
+
+| Template          | Contents |
+|-------------------|----------|
+| `uart_tx`, `uart_rx` | UART 8N1, baud rate from `G_CLK_HZ` / `G_BAUD`; TX has valid/ready, RX samples mid-bit and flags framing errors |
+| `spi_master`      | SPI master, mode 0, 8 bits MSB first, start/busy/done |
+| `axis_skid`       | AXI4-Stream register slice (skid buffer): registered data and ready, full throughput |
+| `axi_lite_regs`   | AXI4-Lite slave with a register map (CONTROL, STATUS, SCRATCH, VERSION), byte strobes, SLVERR on read-only writes |
+
+**Verification and project files**
+
+| Template          | Contents |
+|-------------------|----------|
+| `testbench`       | Self-checking testbench: clock that stops itself, reset, `check` and `tick` helpers, `TEST PASSED` / `severity failure` |
+| `ghdl_makefile`   | Makefile for a `rtl/` + `tb/` project: GHDL resolves the compile order, writes a `.ghw` waveform, `make wave` opens GTKWave |
+| `vivado_build`    | Vivado non-project batch script: synth, place, route, reports, stops before the bitstream if setup timing fails |
+| `xdc_constraints` | Vivado: clock, pins, false path on reset, CDC and I/O delay examples (Arty A7 pins as example) |
+| `sdc_constraints` | SDC (Quartus and others): clock, reset, I/O delays |
 
 `testbench` is written for the `entity_arch` template. Rendered with default
 answers, the two pass together out of the box. It is a starting point, so
 edit the port map for your own device under test.
 
+`ghdl_makefile` and `vivado_build` are project files, not VHDL. Use
+`C-c t n`, then type the file name (`Makefile`, `build.tcl`).
+
 ### Snippets (`snippets/`)
 
 `libs`, `process_clk`, `process_comb`, `case`, `enum_state`, `record`,
-`generate_for`, `generate_if`, `inst_entity`, `function`, `clog2`,
-`assert_check`, `attr_debug` (Vivado `mark_debug`).
+`slv_array`, `generate_for`, `generate_if`, `inst_entity`, `function`,
+`clog2`, `assert_check`, `attr_debug` (Vivado `mark_debug`), `tristate`.
 
 ## Customising
 
@@ -167,10 +209,15 @@ Single braces such as `{ PACKAGE_PIN ... }` in XDC files are literal.
 ### Simulating with GHDL
 
 ```sh
+mkdir -p work
 ghdl -a --std=08 --workdir=work entity_arch.vhd entity_arch_tb.vhd
 ghdl -e --std=08 --workdir=work entity_arch_tb
 ghdl -r --std=08 --workdir=work entity_arch_tb --wave=tb.ghw   # then: gtkwave tb.ghw
 ```
+
+For a whole project use the `ghdl_makefile` template: keep the design in
+`rtl/` and testbenches in `tb/`, and `make TOP=my_tb` does the rest, in the
+right compile order.
 
 The testbench template prints `TEST PASSED`. On a failed check it stops with
 `severity failure`, so `ghdl -r` exits non-zero and works in CI.
@@ -181,12 +228,30 @@ The testbench template prints `TEST PASSED`. On a failed check it stops with
 make test     # Elisp tests (ERT): engine, auto-insert, key bindings, indentation
 make sim      # render every template with its defaults, then GHDL
               # analyse, elaborate and simulate them (needs ghdl)
-make check    # both
+make project  # run the rendered ghdl_makefile on a small rtl/ + tb/ project
+make check    # all three
 ```
 
-`make sim` also runs `test/tb_functional.vhd`. It checks the counter, FIFO
-(including a write to a full FIFO), two-process module, edge detector and both
-synchronizers, so the templates are verified in simulation, not just compiled.
+`make sim` runs three testbenches:
+
+- `entity_arch_tb`: the rendered `testbench` template against `entity_arch`.
+- `test/tb_functional.vhd`: counter, sync FIFO (including a write to a full
+  and a read from an empty FIFO), two-process module, edge detector, both
+  synchronizers.
+- `test/tb_functional_ip.vhd`: debounce (glitches at several phases),
+  pulse_sync, fifo_async (two unrelated clocks, 40 words through a 4-deep
+  FIFO), PWM, LFSR period, shift register, ROM, MAC, UART loopback, UART
+  receiver against +-3 % baud rate error, SPI loopback, AXI-Stream under
+  back-pressure, AXI-Lite (byte strobes, held read data, SLVERR).
+
+The checks were validated by breaking the templates on purpose (wrong bit
+order, off-by-one counters, dropped skid register, ...) and confirming that
+the testbenches fail.
+
+What simulation cannot show: metastability behaviour, timing, and how a
+vendor tool maps the code. The CDC templates are functionally verified, but
+you still need the constraints and a CDC report (`report_cdc` in Vivado).
+`vivado_build` was syntax-checked but not run in Vivado.
 
 ### CI
 

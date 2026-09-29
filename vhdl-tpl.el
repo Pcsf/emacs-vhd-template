@@ -327,8 +327,12 @@ variables, see `vhdl-tpl-render'."
           (ext (file-name-extension
                 (vhdl-tpl--file 'templates template))))
      (list template
-           (let ((file (read-file-name (format "New file (.%s): " ext))))
-             (if (file-name-extension file) file (concat file "." ext))))))
+           (let ((file (read-file-name
+                        (if ext (format "New file (.%s): " ext) "New file: "))))
+             ;; Templates without extension (Makefile) keep the name as typed.
+             (if (or (null ext) (file-name-extension file))
+                 file
+               (concat file "." ext))))))
   (let ((vhdl-tpl--inhibit-auto-insert t))
     (find-file file))
   (when (and (> (buffer-size) 0)

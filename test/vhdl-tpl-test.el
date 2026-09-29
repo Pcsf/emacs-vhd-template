@@ -93,9 +93,12 @@
   (dolist (name '("entity_arch" "two_process" "two_process_pkg" "package"
                   "testbench" "fsm" "counter" "sync_2ff" "reset_sync"
                   "fifo_sync" "ram_sdp" "edge_detect" "top_level"
-                  "xdc_constraints" "sdc_constraints"))
+                  "xdc_constraints" "sdc_constraints" "debounce" "pulse_sync"
+                  "fifo_async" "pwm" "lfsr" "shift_reg" "rom_lut" "mac_dsp"
+                  "uart_tx" "uart_rx" "spi_master" "axis_skid"
+                  "axi_lite_regs" "ghdl_makefile" "vivado_build"))
     (should (assoc name (vhdl-tpl--list 'templates))))
-  (should (>= (length (vhdl-tpl--list 'snippets)) 10)))
+  (should (>= (length (vhdl-tpl--list 'snippets)) 15)))
 
 (ert-deftest vhdl-tpl-test-everything-has-a-description ()
   (dolist (kind '(templates snippets))
@@ -110,7 +113,9 @@
                                    "/tmp/some_name.vhd")))
          (should-not (string-match-p "{{" out))
          (should-not (string-match-p "}}" out))
-         (should-not (string-match-p "\\$[[:alpha:]]" out))
+         (should-not (string-match-p
+                      "\\$\\(?:file\\|filename\\|stem\\|date\\|year\\|author\\|email\\)"
+                      out))
          (should (<= (cl-count ?\uE000 out) 1)))))))
 
 ;;;; User directory
@@ -169,6 +174,19 @@
                             "  end process p_comb;")))
      (should (= (current-column) 4))
      (should (eolp)))))
+
+(ert-deftest vhdl-tpl-test-new-file-keeps-name-of-extensionless-template ()
+  (vhdl-tpl-test--with-defaults
+   (let* ((dir (make-temp-file "vhdl-tpl" t))
+          (file (expand-file-name "Makefile" dir)))
+     (let ((vhdl-tpl--inhibit-auto-insert t))
+       (vhdl-tpl-new-file "ghdl_makefile" file))
+     (with-current-buffer (get-file-buffer file)
+       (goto-char (point-min))
+       (should (search-forward "GHDL  ?= ghdl" nil t))
+       (should (search-forward "\t$(GHDL) -r" nil t))
+       (set-buffer-modified-p nil)
+       (kill-buffer)))))
 
 ;;;; auto-insert
 
