@@ -96,7 +96,11 @@
                   "xdc_constraints" "sdc_constraints" "debounce" "pulse_sync"
                   "fifo_async" "pwm" "lfsr" "shift_reg" "rom_lut" "mac_dsp"
                   "uart_tx" "uart_rx" "spi_master" "axis_skid"
-                  "axi_lite_regs" "ghdl_makefile" "vivado_build"))
+                  "axi_lite_regs" "ghdl_makefile" "vivado_build"
+                  "bus_sync_handshake" "avalon_mm_regs" "bfm_util_pkg"
+                  "bfm_axis_pkg" "bfm_avalon_st_pkg" "bfm_axilite_pkg"
+                  "bfm_avalon_mm_pkg" "bfm_uart_pkg" "bfm_spi_pkg"
+                  "testbench_bfm"))
     (should (assoc name (vhdl-tpl--list 'templates))))
   (should (>= (length (vhdl-tpl--list 'snippets)) 15)))
 

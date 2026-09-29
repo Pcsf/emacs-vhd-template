@@ -1,6 +1,94 @@
 -- Functional checks of the interface and CDC templates: debounce,
 -- pulse_sync, fifo_async, pwm, lfsr, shift_reg, rom_lut, mac_dsp, UART
--- (loopback), SPI (loopback), axis_skid, axi_lite_regs.  Run by `make check'.
+-- (loopback), SPI (loopback), axis_skid, axi_lite_regs, bus_sync_handshake.
+-- Run by `make check'.
+
+-- One direction of a handshake bus synchronizer under test: the source keeps
+-- offering new words (and changes src_data while a transfer is in flight),
+-- the destination must receive every word once, in order, as a one-clock pulse.
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+entity tb_hs_bench is
+  port (
+    src_clk : in  std_logic;
+    dst_clk : in  std_logic;
+    rst     : in  std_logic;
+    done    : out std_logic := '0';
+    fail    : out std_logic := '0'
+  );
+end entity tb_hs_bench;
+
+architecture sim of tb_hs_bench is
+
+  constant C_WORDS : natural := 30;
+
+  signal data_in   : std_logic_vector(15 downto 0) := (others => '0');
+  signal send      : std_logic := '0';
+  signal ready     : std_logic;
+  signal dst_data  : std_logic_vector(15 downto 0);
+  signal dst_valid : std_logic;
+
+  function word (i : natural) return std_logic_vector is
+  begin
+    return std_logic_vector(to_unsigned((i * 2731 + 12345) mod 65536, 16));
+  end function word;
+
+begin
+
+  u_hs : entity work.bus_sync_handshake
+    generic map (G_WIDTH => 16)
+    port map (src_clk => src_clk, src_rst => rst, src_data => data_in,
+              src_send => send, src_ready => ready,
+              dst_clk => dst_clk, dst_rst => rst, dst_data => dst_data,
+              dst_valid => dst_valid);
+
+  p_src : process
+    variable i : natural := 1;
+  begin
+    wait until rst = '0';
+    wait until rising_edge(src_clk);
+    while i <= C_WORDS loop
+      data_in <= word(i);
+      send    <= '1';
+      wait until rising_edge(src_clk);
+      if ready = '1' then                   -- accepted at this edge
+        i := i + 1;
+      end if;
+    end loop;
+    send <= '0';
+    wait;
+  end process p_src;
+
+  p_dst : process (dst_clk)
+    variable expected   : natural := 1;
+    variable prev_valid : std_logic := '0';
+  begin
+    if rising_edge(dst_clk) then
+      if dst_valid = '1' then
+        if prev_valid = '1' then
+          fail <= '1';
+          report "CHECK FAILED: dst_valid is longer than one clock" severity error;
+        end if;
+        if expected > C_WORDS then
+          fail <= '1';
+          report "CHECK FAILED: more words received than sent" severity error;
+        elsif dst_data /= word(expected) then
+          fail <= '1';
+          report "CHECK FAILED: word " & integer'image(expected)
+                 & " is wrong or out of order" severity error;
+        end if;
+        expected := expected + 1;
+        if expected = C_WORDS + 1 then
+          done <= '1';
+        end if;
+      end if;
+      prev_valid := dst_valid;
+    end if;
+  end process p_dst;
+
+end architecture sim;
 
 library ieee;
 use ieee.std_logic_1164.all;
@@ -19,8 +107,8 @@ architecture sim of tb_functional_ip is
   signal stop : boolean   := false;
 
   signal rst  : std_logic := '1';
-  signal fail : std_logic_vector(0 to 12) := (others => '0');
-  signal done : std_logic_vector(0 to 12) := (others => '0');
+  signal fail : std_logic_vector(0 to 14) := (others => '0');
+  signal done : std_logic_vector(0 to 14) := (others => '0');
 
   procedure expect (signal flag : out std_logic;
                     condition   : boolean;
@@ -690,6 +778,15 @@ begin
     done(11) <= '1';
     wait;
   end process p_axi;
+
+  -- 13, 14: bus_sync_handshake, both directions between unrelated clocks -----
+  u_hs_slow_to_fast : entity work.tb_hs_bench
+    port map (src_clk => clk2, dst_clk => clk, rst => rst,
+              done => done(13), fail => fail(13));
+
+  u_hs_fast_to_slow : entity work.tb_hs_bench
+    port map (src_clk => clk, dst_clk => clk2, rst => rst,
+              done => done(14), fail => fail(14));
 
   -- Verdict ------------------------------------------------------------------
   p_verdict : process

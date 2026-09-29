@@ -21,7 +21,30 @@ set_property CONFIG_VOLTAGE 3.3 [current_design]
 # set_input_delay  -clock sys_clk -min 0.5 [get_ports din]
 # set_output_delay -clock sys_clk -max 2.0 [get_ports dout]
 
-## Clock domain crossings
+## Clock domain crossings: one constraint per crossing structure.  A blanket
+## set_clock_groups hides forgotten crossings, so prefer the targeted ones and
+## run report_cdc.  Replace u_* by your instance paths and <T> by the period
+## of the destination clock in ns.
 # set_clock_groups -asynchronous -group [get_clocks clk_a] -group [get_clocks clk_b]
-# set_max_delay -datapath_only -from [get_cells src_reg*] -to [get_cells sync_reg[0]*] 4.0
+
+## sync_2ff: bound the net into the first synchronizer flop
+# set_max_delay -datapath_only -from [get_cells u_src/sig_reg] -to [get_cells u_sync/sync_reg[0]] <T>
+
+## pulse_sync: toggle into the destination synchronizer
+# set_max_delay -datapath_only -from [get_cells u_ps/toggle_reg] -to [get_cells u_ps/sync_reg[0]] <T>
+
+## reset_sync: asynchronous assertion reaches the preset pins
+# set_false_path -to [get_pins u_reset_sync/sync_reg[*]/PRE]
+
+## bus_sync_handshake: word (bounded latency and skew) and both toggles
+# set_max_delay -datapath_only -from [get_cells u_hs/data_hold_reg[*]] -to [get_cells u_hs/dst_data_r_reg[*]] <T>
+# set_bus_skew  -from [get_cells u_hs/data_hold_reg[*]] -to [get_cells u_hs/dst_data_r_reg[*]] <T/2>
+# set_max_delay -datapath_only -from [get_cells u_hs/req_tgl_reg] -to [get_cells u_hs/req_sync_reg[0]] <T>
+# set_max_delay -datapath_only -from [get_cells u_hs/ack_tgl_reg] -to [get_cells u_hs/ack_sync_reg[0]] <T_src>
+
+## fifo_async: Gray pointers in both directions
+# set_max_delay -datapath_only -from [get_cells u_fifo/wr_gray_reg[*]] -to [get_cells u_fifo/wr_gray_r1_reg[*]] <T_rd>
+# set_bus_skew  -from [get_cells u_fifo/wr_gray_reg[*]] -to [get_cells u_fifo/wr_gray_r1_reg[*]] <T_rd/2>
+# set_max_delay -datapath_only -from [get_cells u_fifo/rd_gray_reg[*]] -to [get_cells u_fifo/rd_gray_w1_reg[*]] <T_wr>
+# set_bus_skew  -from [get_cells u_fifo/rd_gray_reg[*]] -to [get_cells u_fifo/rd_gray_w1_reg[*]] <T_wr/2>
 {{_}}

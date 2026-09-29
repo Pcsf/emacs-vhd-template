@@ -8,9 +8,10 @@
 (require 'vhdl-tpl)
 
 (defconst render-all--file-names
-  '(("testbench" . "entity_arch_tb.vhd")   ; tests the entity_arch template
-    ("package"   . "my_pkg.vhd")
-    ("ghdl_makefile" . "Makefile")))         ; `package' is a reserved word
+  '(("testbench"     . "entity_arch_tb.vhd")   ; tests the entity_arch template
+    ("testbench_bfm" . "axis_skid_tb.vhd")     ; tests the axis_skid template
+    ("package"       . "my_pkg.vhd")           ; `package' is a reserved word
+    ("ghdl_makefile" . "Makefile")))
 
 (let* ((out (expand-file-name "build/rendered"
                               (file-name-directory
