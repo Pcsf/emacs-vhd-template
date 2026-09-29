@@ -154,6 +154,10 @@ begin
     tick;
     expect(errors, empty = '1' and full = '0', "FIFO empty after 4 reads");
     expect(errors, rd_valid = '0', "rd_valid low without rd_en");
+    rd_en <= '1';                 -- read from an empty FIFO must be ignored
+    tick(2);
+    rd_en <= '0';
+    expect(errors, rd_valid = '0' and empty = '1', "read while empty ignored");
 
     -- two-process module: start, run 256 clocks, done, back to idle
     tp_in.start <= '1';

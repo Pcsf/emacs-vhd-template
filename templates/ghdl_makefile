@@ -1,0 +1,35 @@
+{{!GHDL simulation Makefile: rtl/ + tb/, dependency order handled by GHDL, waveform for GTKWave}}
+{{>header.hash}}
+
+# Layout: rtl/*.vhd (design)  tb/*.vhd (testbenches)
+#   make                  run the testbench TOP
+#   make TOP=other_tb     run another one
+#   make wave             run, then open the waveform in GTKWave
+#   make clean
+
+GHDL  ?= ghdl
+STD   ?= 08
+TOP   ?= {{tb|tb_top}}
+STOP  ?= 10ms
+
+RTL   := $(wildcard rtl/*.vhd)
+TB    := $(wildcard tb/*.vhd)
+BUILD := build
+FLAGS := --std=$(STD) --workdir=$(BUILD)
+
+.PHONY: run wave clean
+
+run: | $(BUILD)
+	$(GHDL) -i $(FLAGS) $(RTL) $(TB)
+	$(GHDL) -m $(FLAGS) $(TOP)
+	$(GHDL) -r $(FLAGS) $(TOP) --wave=$(BUILD)/$(TOP).ghw --stop-time=$(STOP)
+
+wave: run
+	gtkwave $(BUILD)/$(TOP).ghw &
+
+$(BUILD):
+	mkdir -p $@
+
+clean:
+	rm -rf $(BUILD) $(TOP) *.o e~*.o
+{{_}}
