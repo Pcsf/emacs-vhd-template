@@ -4,7 +4,7 @@
 #   make check     everything
 #   make test      Elisp tests only
 #   make sim       render + GHDL only
-#   make project   run the rendered GHDL Makefile on a small project
+#   make tdd       new-block bundle on mk/: RED on the skeleton, then GREEN
 
 EMACS ?= emacs
 GHDL  ?= ghdl
@@ -31,9 +31,9 @@ ENTITIES := two_process entity_arch fsm counter sync_2ff reset_sync fifo_sync \
 TESTBENCHES := entity_arch_tb axis_skid_tb tb_functional tb_functional_ip tb_bfm \
                tb_i2c
 
-.PHONY: check test render sim project clean
+.PHONY: check test render sim tdd clean
 
-check: test sim project
+check: test sim tdd
 
 test:
 	$(EMACS) -Q --batch -L . -l test/vhdl-tpl-test.el \
@@ -61,15 +61,25 @@ sim: render
 	  grep -q "TEST PASSED" $(BUILD)/$$tb.log || { echo "$$tb FAILED"; exit 1; }; \
 	done
 
-# The rendered GHDL Makefile template must work on a rtl/ + tb/ project.
-project: render
-	rm -rf $(BUILD)/proj
-	mkdir -p $(BUILD)/proj/rtl $(BUILD)/proj/tb
-	cp $(RENDERED)/entity_arch.vhd $(BUILD)/proj/rtl/
-	cp $(RENDERED)/entity_arch_tb.vhd $(BUILD)/proj/tb/
-	cp $(RENDERED)/Makefile $(BUILD)/proj/Makefile
-	$(MAKE) -C $(BUILD)/proj TOP=entity_arch_tb 2>&1 | tee $(BUILD)/proj.log
-	@grep -q "TEST PASSED" $(BUILD)/proj.log || { echo "project FAILED"; exit 1; }
+# The test-first bundle (vhdl-tpl-new-block) on the mk/ framework: the fresh
+# skeleton must fail TC-02 (RED), and one line of comb must make it pass.
+MK_REPO ?= https://github.com/Pcsf/makefile_project_template.git
+TDD     := $(BUILD)/tdd
+TDD_LINE := \    if blki.start = '1' then v.busy := '1'; end if;
+
+tdd:
+	rm -rf $(TDD)
+	$(EMACS) -Q --batch -L . -l test/new-block.el $(TDD) blk
+	git clone -q --depth 1 $(MK_REPO) $(TDD)/mk
+	-$(MAKE) -C $(TDD) test TEST_CHECK=0 GHDL_TEST_FLAGS=--assert-level=failure \
+	  > $(BUILD)/tdd_red.log 2>&1
+	grep -a -q "TC-02 start raises busy on the next clock FAILED" $(BUILD)/tdd_red.log
+	! grep -a -q "TEST PASSED" $(BUILD)/tdd_red.log
+	sed -i "/-- Default every helper variable here./a $(TDD_LINE)" $(TDD)/src/blk.vhd
+	$(MAKE) -C $(TDD) test > $(BUILD)/tdd_green.log 2>&1 \
+	  || { cat $(BUILD)/tdd_green.log; echo "tdd FAILED"; exit 1; }
+	grep -a -q "TEST PASSED" $(BUILD)/tdd_green.log
+	@echo "tdd: RED on the skeleton, GREEN after one line of comb"
 
 clean:
 	rm -rf $(BUILD)

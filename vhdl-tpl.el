@@ -85,7 +85,7 @@ the same name, so this is how you override the header or a template."
 
 (defun vhdl-tpl--set-prefix (symbol value)
   "Set SYMBOL to VALUE and (re)bind `vhdl-tpl-command-map' to it."
-  (when-let ((old (and (default-boundp symbol) (default-value symbol))))
+  (when-let* ((old (and (default-boundp symbol) (default-value symbol))))
     (define-key vhdl-tpl-mode-map (kbd old) nil))
   (set-default symbol value)
   (when value
@@ -299,7 +299,7 @@ variables, see `vhdl-tpl-render'."
          (completion-extra-properties
           (list :annotation-function
                 (lambda (name)
-                  (when-let ((text (cdr (assoc name descriptions))))
+                  (when-let* ((text (cdr (assoc name descriptions))))
                     (concat "  " text)))))
          (completion-ignore-case t))
     (completing-read (if default
@@ -339,6 +339,87 @@ variables, see `vhdl-tpl-render'."
              (not (yes-or-no-p "Buffer is not empty; insert at point anyway? ")))
     (user-error "Aborted"))
   (vhdl-tpl-insert 'templates template))
+
+;;;; A new two-process block, test first
+
+(defconst vhdl-tpl-mk-repository
+  "https://github.com/Pcsf/makefile_project_template.git"
+  "The mk/ build framework a new block's project.mk is written for.")
+
+(defun vhdl-tpl--project-root (dir)
+  "Nearest directory at or above DIR with a project.mk or .git, else DIR."
+  (or (locate-dominating-file
+       dir (lambda (d) (or (file-exists-p (expand-file-name "project.mk" d))
+                           (file-exists-p (expand-file-name ".git" d)))))
+      dir))
+
+(defun vhdl-tpl--write (template file values)
+  "Render TEMPLATE with VALUES into the new FILE."
+  (make-directory (file-name-directory file) t)
+  (let ((text (vhdl-tpl-render
+               (vhdl-tpl--read-file (vhdl-tpl--file 'templates template))
+               values file)))
+    (with-temp-file file
+      (insert (replace-regexp-in-string
+               (regexp-quote vhdl-tpl--cursor) "" text t t)))))
+
+(defun vhdl-tpl--add-test-case (project-mk tb)
+  "Append TB to TESTS in PROJECT-MK unless the file already names it."
+  (with-temp-buffer
+    (insert-file-contents project-mk)
+    (unless (re-search-forward (concat "\\_<" (regexp-quote tb) "\\_>") nil t)
+      (goto-char (point-max))
+      (unless (bolp) (insert "\n"))
+      (insert (format "TESTS += %s\n" tb))
+      (write-region nil nil project-mk)
+      t)))
+
+;;;###autoload
+(defun vhdl-tpl-new-block (name root)
+  "Create the two-process block NAME in project ROOT, ready for test-first work.
+Writes src/NAME_pkg.vhd (port records), src/NAME.vhd (the two-process
+skeleton with an empty comb process) and tb/tb_NAME.vhd (numbered test
+cases).  A project without project.mk also gets project.mk and a Makefile
+for the mk/ build framework; an existing project.mk gets the testbench
+added to TESTS.  Existing files are never overwritten.  As written, the
+testbench fails on the skeleton: that is the RED step."
+  (interactive
+   (let ((root (read-directory-name
+                "Project root: " (vhdl-tpl--project-root default-directory))))
+     (list (read-string "Block name: ") root)))
+  (when (string-empty-p name)
+    (user-error "The block needs a name"))
+  (let* ((root (file-name-as-directory (expand-file-name root)))
+         (tb (concat "tb_" name))
+         (files `(("two_process_pkg"      . ,(expand-file-name (format "src/%s_pkg.vhd" name) root))
+                  ("two_process_skeleton" . ,(expand-file-name (format "src/%s.vhd" name) root))
+                  ("two_process_tb"       . ,(expand-file-name (format "tb/%s.vhd" tb) root))))
+         (project-mk (expand-file-name "project.mk" root))
+         (makefile (expand-file-name "Makefile" root))
+         (new-project (not (file-exists-p project-mk))))
+    (when-let* ((taken (cl-remove-if-not #'file-exists-p (mapcar #'cdr files))))
+      (user-error "Already exists: %s"
+                  (mapconcat #'abbreviate-file-name taken ", ")))
+    (let* ((iface (funcall vhdl-tpl-read-function "iface" name))
+           (desc (funcall vhdl-tpl-read-function "desc" "TODO"))
+           (values `(("entity" . ,name) ("iface" . ,iface) ("tb" . ,tb)
+                     ("desc" . ,desc)
+                     ("project" . ,(file-name-nondirectory
+                                    (directory-file-name root))))))
+      (dolist (f files)
+        (vhdl-tpl--write (car f) (cdr f) values))
+      (if new-project
+          (vhdl-tpl--write "project_mk" project-mk values)
+        (vhdl-tpl--add-test-case project-mk tb))
+      (unless (file-exists-p makefile)
+        (with-temp-file makefile
+          (insert "include mk/Makefile\n"))))
+    (let ((vhdl-tpl--inhibit-auto-insert t))
+      (find-file (cdr (nth 2 files))))
+    (message "%s"
+             (if (file-directory-p (expand-file-name "mk" root))
+                 "RED: make test TEST_CHECK=0 GHDL_TEST_FLAGS=--assert-level=failure   GREEN: make test"
+               (format "No mk/ yet: git submodule add %s mk" vhdl-tpl-mk-repository)))))
 
 ;;;; Integration with auto-insert
 
@@ -380,6 +461,7 @@ variables, see `vhdl-tpl-render'."
 (define-key vhdl-tpl-command-map "t" #'vhdl-tpl-insert-template)
 (define-key vhdl-tpl-command-map "s" #'vhdl-tpl-insert-snippet)
 (define-key vhdl-tpl-command-map "n" #'vhdl-tpl-new-file)
+(define-key vhdl-tpl-command-map "b" #'vhdl-tpl-new-block)
 
 (when vhdl-tpl-key-prefix
   (define-key vhdl-tpl-mode-map (kbd vhdl-tpl-key-prefix) vhdl-tpl-command-map))

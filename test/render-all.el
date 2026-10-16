@@ -10,8 +10,7 @@
 (defconst render-all--file-names
   '(("testbench"     . "entity_arch_tb.vhd")   ; tests the entity_arch template
     ("testbench_bfm" . "axis_skid_tb.vhd")     ; tests the axis_skid template
-    ("package"       . "my_pkg.vhd")           ; `package' is a reserved word
-    ("ghdl_makefile" . "Makefile")))
+    ("package"       . "my_pkg.vhd")))         ; `package' is a reserved word
 
 (let* ((out (expand-file-name "build/rendered"
                               (file-name-directory

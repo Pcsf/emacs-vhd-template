@@ -96,14 +96,14 @@
                   "xdc_constraints" "sdc_constraints" "debounce" "pulse_sync"
                   "fifo_async" "pwm" "lfsr" "shift_reg" "rom_lut" "mac_dsp"
                   "uart_tx" "uart_rx" "spi_master" "axis_skid"
-                  "axi_lite_regs" "ghdl_makefile" "vivado_build"
+                  "axi_lite_regs" "project_mk" "vivado_build"
                   "bus_sync_handshake" "avalon_mm_regs" "bfm_util_pkg"
                   "bfm_axis_pkg" "bfm_avalon_st_pkg" "bfm_axilite_pkg"
                   "bfm_avalon_mm_pkg" "bfm_uart_pkg" "bfm_spi_pkg"
                   "testbench_bfm" "spi_slave" "i2c_master" "i2c_slave"
-                  "bfm_i2c_pkg"))
+                  "bfm_i2c_pkg" "two_process_skeleton" "two_process_tb"))
     (should (assoc name (vhdl-tpl--list 'templates))))
-  (should (>= (length (vhdl-tpl--list 'snippets)) 15)))
+  (should (>= (length (vhdl-tpl--list 'snippets)) 16)))
 
 (ert-deftest vhdl-tpl-test-everything-has-a-description ()
   (dolist (kind '(templates snippets))
@@ -183,13 +183,13 @@
 (ert-deftest vhdl-tpl-test-new-file-keeps-name-of-extensionless-template ()
   (vhdl-tpl-test--with-defaults
    (let* ((dir (make-temp-file "vhdl-tpl" t))
-          (file (expand-file-name "Makefile" dir)))
+          (file (expand-file-name "project.mk" dir)))
      (let ((vhdl-tpl--inhibit-auto-insert t))
-       (vhdl-tpl-new-file "ghdl_makefile" file))
+       (vhdl-tpl-new-file "project_mk" file))
      (with-current-buffer (get-file-buffer file)
        (goto-char (point-min))
-       (should (search-forward "GHDL  ?= ghdl" nil t))
-       (should (search-forward "\t$(GHDL) -r" nil t))
+       (should (search-forward "TOOLCHAIN    := ghdl" nil t))
+       (should (search-forward "GHDL_WAVE := ghw" nil t))
        (set-buffer-modified-p nil)
        (kill-buffer)))))
 
@@ -278,6 +278,65 @@
   (should (eq (lookup-key vhdl-tpl-mode-map (kbd "C-c t s"))
               #'vhdl-tpl-insert-snippet))
   (should (eq (lookup-key vhdl-tpl-mode-map (kbd "C-c t n"))
-              #'vhdl-tpl-new-file)))
+              #'vhdl-tpl-new-file))
+  (should (eq (lookup-key vhdl-tpl-mode-map (kbd "C-c t b"))
+              #'vhdl-tpl-new-block)))
+
+;;;; New two-process block
+
+(defun vhdl-tpl-test--slurp (file)
+  (with-temp-buffer (insert-file-contents file) (buffer-string)))
+
+(defun vhdl-tpl-test--new-block (name dir)
+  "Run `vhdl-tpl-new-block' without prompts and close the buffer it opens."
+  (vhdl-tpl-test--with-defaults
+   (let ((vhdl-tpl--inhibit-auto-insert t))
+     (vhdl-tpl-new-block name dir)
+     (set-buffer-modified-p nil)
+     (kill-buffer))))
+
+(ert-deftest vhdl-tpl-test-new-block-creates-a-project ()
+  (let ((dir (make-temp-file "vhdl-tpl" t)))
+    (vhdl-tpl-test--new-block "blk" dir)
+    (let ((pkg (vhdl-tpl-test--slurp (expand-file-name "src/blk_pkg.vhd" dir)))
+          (rtl (vhdl-tpl-test--slurp (expand-file-name "src/blk.vhd" dir)))
+          (tb  (vhdl-tpl-test--slurp (expand-file-name "tb/tb_blk.vhd" dir)))
+          (mk  (vhdl-tpl-test--slurp (expand-file-name "project.mk" dir))))
+      (should (string-match-p "^package blk_pkg is" pkg))
+      (should (string-match-p "blki : in  blk_in_type" pkg))
+      (should (string-match-p "^use work\\.blk_pkg\\.all;" rtl))
+      (should (string-match-p "^entity blk is" rtl))
+      (should (string-match-p "signal r, rin : reg_type := REG_RESET;" rtl))
+      (should (string-match-p "^entity tb_blk is" tb))
+      (should (string-match-p "entity work\\.blk$" tb))
+      (should (string-match-p "^GHDL_TOP  := tb_blk$" mk))
+      (should (string-match-p "^TESTS     := tb_blk$" mk))
+      (should (string-match-p "^PROJECT_NAME := " mk))
+      (dolist (text (list pkg rtl tb mk))
+        (should-not (string-match-p "{{\\|}}\\|\uE000" text))))
+    (should (equal (vhdl-tpl-test--slurp (expand-file-name "Makefile" dir))
+                   "include mk/Makefile\n"))))
+
+(ert-deftest vhdl-tpl-test-new-block-never-overwrites ()
+  (let* ((dir (make-temp-file "vhdl-tpl" t))
+         (rtl (expand-file-name "src/blk.vhd" dir)))
+    (make-directory (file-name-directory rtl) t)
+    (with-temp-file rtl (insert "-- mine\n"))
+    (should-error (vhdl-tpl-test--new-block "blk" dir) :type 'user-error)
+    (should (equal (vhdl-tpl-test--slurp rtl) "-- mine\n"))
+    (should-not (file-exists-p (expand-file-name "src/blk_pkg.vhd" dir)))
+    (should-not (file-exists-p (expand-file-name "project.mk" dir)))))
+
+(ert-deftest vhdl-tpl-test-new-block-joins-an-existing-project ()
+  (let* ((dir (make-temp-file "vhdl-tpl" t))
+         (mk (expand-file-name "project.mk" dir))
+         (makefile (expand-file-name "Makefile" dir)))
+    (with-temp-file mk (insert "TESTS := tb_old\n"))
+    (with-temp-file makefile (insert "# mine\n"))
+    (vhdl-tpl-test--new-block "blk" dir)
+    (should (equal (vhdl-tpl-test--slurp mk) "TESTS := tb_old\nTESTS += tb_blk\n"))
+    (should-not (vhdl-tpl--add-test-case mk "tb_blk"))
+    (should (equal (vhdl-tpl-test--slurp mk) "TESTS := tb_old\nTESTS += tb_blk\n"))
+    (should (equal (vhdl-tpl-test--slurp makefile) "# mine\n"))))
 
 ;;; vhdl-tpl-test.el ends here

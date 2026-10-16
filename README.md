@@ -3,7 +3,7 @@
 VHDL and FPGA file templates for Emacs. It uses only what ships with Emacs
 (`auto-insert`, `completing-read`, `vhdl-mode`), with no packages to install.
 
-- Open a new `foo.vhd` and pick a template from a list of 44, the things an
+- Open a new `foo.vhd` and pick a template from a list of 46, the things an
   FPGA engineer keeps re-writing: entity, testbench, FSM, CDC synchronizers
   (including a handshake bus synchronizer and an async FIFO), UART, SPI,
   AXI-Lite, AXI-Stream and Avalon blocks, bus functional models (BFMs) to
@@ -14,7 +14,7 @@ VHDL and FPGA file templates for Emacs. It uses only what ships with Emacs
 - Templates are plain `.vhd` files, not Elisp. Edit them with any editor,
   add your own, or override the bundled ones from your own directory.
 
-Tested with Emacs 29 and GHDL 4 (`make check`). It needs Emacs 27.1 or newer.
+Tested with Emacs 29 and 31, GHDL 4 and 6 (`make check`). It needs Emacs 27.1 or newer.
 
 ## Install
 
@@ -52,6 +52,7 @@ Add this to `~/.emacs.d/init.el`:
 | `C-x C-f src/uart_tx.vhd`       | Asks for a template, then for its variables              |
 | `C-x C-f src/uart_tx_tb.vhd`    | Same, and proposes `testbench` (from the `_tb` suffix)   |
 | `C-c t n`                       | New file: pick template, then file name                  |
+| `C-c t b`                       | New two-process block, test first: package, skeleton, testbench, `project.mk` |
 | `C-c t t`                       | Insert a whole-file template at point                    |
 | `C-c t s`                       | Insert a snippet at point, indented for the context      |
 | `M-x auto-insert`               | Insert a template into the current empty buffer          |
@@ -76,6 +77,61 @@ Suggested file names:
 | `_top`              | `top_level`       |
 | anything else       | `entity_arch` (`vhdl-tpl-default-template`) |
 
+## Two-process blocks, test first
+
+`C-c t b` (`M-x vhdl-tpl-new-block`) asks for the project root and a block
+name, then writes everything a new block needs:
+
+```
+project.mk            mk build framework settings (only if there is none)
+Makefile              include mk/Makefile (only if there is none)
+src/<name>_pkg.vhd    port records, one in and one out
+src/<name>.vhd        two-process skeleton with an empty comb process
+tb/tb_<name>.vhd      testbench with TC-01 and TC-02, ends with TEST PASSED
+```
+
+An existing `project.mk` gets `TESTS += tb_<name>` instead. Nothing is ever
+overwritten. The build runs on the
+[mk framework](https://github.com/Pcsf/makefile_project_template) (commit
+`f87eeee` or later), added once per project:
+
+```sh
+git submodule add https://github.com/Pcsf/makefile_project_template.git mk
+```
+
+Then the loop:
+
+| Step     | Do                                                     | Expect |
+|----------|--------------------------------------------------------|--------|
+| RED      | `make test TEST_CHECK=0 GHDL_TEST_FLAGS=--assert-level=failure` | `TC-02 ... FAILED` in `build/test/tb_<name>.log`; the summary says SKIPPED |
+| GREEN    | add the `comb` lines one test case needs, `make test`  | `[TEST] PASSED` |
+| Next     | `C-c t s tc` in the testbench                          | a new numbered test case that fails until you write its check |
+| Refactor | change `comb` and `reg_type`, testbench untouched, `make test` | still `[TEST] PASSED` |
+
+As written, the skeleton fails TC-02 ("start raises busy on the next clock").
+One line in `comb` makes it pass, with the default interface name (the block
+name, so the ports are `<name>i` and `<name>o`):
+
+```vhdl
+if <name>i.start = '1' then v.busy := '1'; end if;
+```
+
+What saves time later:
+
+- **TC-01 passes on the empty skeleton,** because the reset values already
+  satisfy it. Any test that passes before its logic exists has not shown it
+  can fail. Break the design on purpose once (a wrong `REG_RESET` value, a
+  dropped condition), watch exactly that test fail, then undo it.
+- **Look at waveforms in GHW.** `make simulate` writes
+  `build/<project>.ghw`. GHDL leaves record signals out of a VCD, so a
+  two-process design looks empty there.
+- **The skeleton says where each signal goes:** a memory -> its own RAM
+  entity (`ram_sdp`), another clock -> a synchronizer first (`sync_2ff`),
+  needed after the next edge or an output -> a `reg_type` field, anything else
+  -> a variable in `comb`, with a default.
+- **The testbench stops itself** with `std.env.stop`, so `make simulate`
+  ends on its own; `make test` also has the `TEST_TIME` limit.
+
 ## What is included
 
 All VHDL is VHDL-2008, uses `ieee.numeric_std`, and has synchronous
@@ -89,7 +145,9 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 | Template          | Contents |
 |-------------------|----------|
 | `entity_arch`     | Entity and RTL architecture: generic width, clocked process, sync reset |
-| `two_process_pkg`, `two_process` | Gaisler two-process style: port records and component package, then `comb` and `regs` processes with a `reg_type` record and `REG_RESET` |
+| `two_process_pkg`, `two_process` | Gaisler two-process style: port records and component package, then `comb` and `regs` processes with a `reg_type` record, `REG_RESET` as reset and initial value, outputs driven from register fields |
+| `two_process_skeleton` | The same structure with an empty `comb` process: the RED stub for test-first design (used by `C-c t b`) |
+| `two_process_tb` | Test-first testbench for a two-process block: port records, numbered test cases, inputs driven after the rising edge and outputs checked on the falling edge, `TEST PASSED` for `make test` |
 | `package`         | Package and body: constants, types, `clog2` |
 | `fsm`             | State register, next-state process, Moore outputs, recovery from illegal states |
 | `counter`         | Modulo-N counter with enable and wrap strobe |
@@ -151,7 +209,7 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 |-------------------|----------|
 | `testbench`       | Self-checking testbench: clock that stops itself, reset, `check` and `tick` helpers, `TEST PASSED` / `severity failure` |
 | `testbench_bfm`   | Testbench built on the BFMs for an AXI-Stream DUT: numbered test cases, source BFM in the sequencer, sink BFM in a checker process, final report |
-| `ghdl_makefile`   | Makefile for a `rtl/` + `tb/` project: GHDL resolves the compile order, writes a `.ghw` waveform, `make wave` opens GTKWave |
+| `project_mk`      | `project.mk` for the [mk build framework](https://github.com/Pcsf/makefile_project_template): `src/` + `tb/`, `make test` verdict on `TEST PASSED`, time limit, GHW waveforms |
 | `vivado_build`    | Vivado non-project batch script: synth, place, route, reports, stops before the bitstream if setup timing fails |
 | `xdc_constraints` | Vivado: clock, pins, false path on reset, CDC and I/O delay examples (Arty A7 pins as example) |
 | `sdc_constraints` | SDC (Quartus and others): clock, reset, I/O delays |
@@ -161,14 +219,15 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 the box. They are starting points, so edit the port map for your own device
 under test.
 
-`ghdl_makefile` and `vivado_build` are project files, not VHDL. Use
-`C-c t n`, then type the file name (`Makefile`, `build.tcl`).
+`project_mk` and `vivado_build` are project files, not VHDL. Use
+`C-c t n`, then type the file name (`project.mk`, `build.tcl`).
 
 ### Snippets (`snippets/`)
 
 `libs`, `process_clk`, `process_comb`, `case`, `enum_state`, `record`,
 `slv_array`, `generate_for`, `generate_if`, `inst_entity`, `function`,
-`clog2`, `assert_check`, `attr_debug` (Vivado `mark_debug`), `tristate`.
+`clog2`, `assert_check`, `attr_debug` (Vivado `mark_debug`), `tristate`,
+`tc` (a numbered test case that fails until you write its check).
 
 ## Bus functional models
 
@@ -283,9 +342,9 @@ ghdl -e --std=08 --workdir=work entity_arch_tb
 ghdl -r --std=08 --workdir=work entity_arch_tb --wave=tb.ghw   # then: gtkwave tb.ghw
 ```
 
-For a whole project use the `ghdl_makefile` template: keep the design in
-`rtl/` and testbenches in `tb/`, and `make TOP=my_tb` does the rest, in the
-right compile order.
+For a whole project use the mk build framework: `C-c t b` writes its
+`project.mk`, or start one from the `project_mk` template. See
+[Two-process blocks, test first](#two-process-blocks-test-first).
 
 The testbench template prints `TEST PASSED`. On a failed check it stops with
 `severity failure`, so `ghdl -r` exits non-zero and works in CI.
@@ -296,7 +355,8 @@ The testbench template prints `TEST PASSED`. On a failed check it stops with
 make test     # Elisp tests (ERT): engine, auto-insert, key bindings, indentation
 make sim      # render every template with its defaults, then GHDL
               # analyse, elaborate and simulate them (needs ghdl)
-make project  # run the rendered ghdl_makefile on a small rtl/ + tb/ project
+make tdd      # C-c t b bundle on the mk framework: RED on the skeleton,
+              # GREEN after one line of comb (clones mk, needs git)
 make check    # all three
 ```
 

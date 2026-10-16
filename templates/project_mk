@@ -1,0 +1,20 @@
+{{!project.mk for the mk/ build framework: GHDL, make test verdict, GHW waveforms}}
+{{>header.hash}}
+
+PROJECT_NAME := {{project|my_project}}
+BUILD_DIR    := build
+TOOLCHAIN    := ghdl
+
+# Design in src/, testbenches in tb/, compiled in this order
+VHDL_SRCS_DIR := src tb
+
+GHDL_STD  := 08
+GHDL_TOP  := {{tb|tb_top}}
+# GHDL leaves record signals out of a VCD; GHW keeps them
+GHDL_WAVE := ghw
+
+# make test: a run that never prints this line fails
+TEST_PASS_PATTERN := TEST PASSED
+# Longest passing run; a hang becomes a failure
+TEST_TIME := 1ms
+TESTS     := {{tb}}
