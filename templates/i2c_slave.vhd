@@ -66,6 +66,11 @@ architecture rtl of {{entity}} is
   attribute async_reg : string;
   attribute async_reg of scl_q : signal is "true";
   attribute async_reg of sda_q : signal is "true";
+  attribute altera_attribute : string;
+  attribute altera_attribute of scl_q : signal is
+    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
+  attribute altera_attribute of sda_q : signal is
+    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
 
 begin
 

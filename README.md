@@ -161,7 +161,7 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 
 | Template          | Contents |
 |-------------------|----------|
-| `sync_2ff`        | N-flop single-bit synchronizer, `ASYNC_REG` (Xilinx), Quartus attribute as comment |
+| `sync_2ff`        | N-flop single-bit synchronizer, `ASYNC_REG` (Xilinx) and `SYNCHRONIZER_IDENTIFICATION` (Intel) |
 | `reset_sync`      | Reset that asserts asynchronously and releases synchronously |
 | `pulse_sync`      | Single-pulse transfer between two clocks (toggle method) |
 | `bus_sync_handshake` | Multi-bit word between two clocks: 2-phase req/ack handshake, the word is frozen until the acknowledge is seen; for configuration words and commands. The constraints it needs are in its header and in `xdc_constraints` |
@@ -183,7 +183,7 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 |-------------------|----------|
 | `uart_tx`, `uart_rx` | UART 8N1, baud rate from `G_CLK_HZ` / `G_BAUD`; TX has valid/ready, RX samples mid-bit and flags framing errors |
 | `spi_master`      | SPI master, mode 0, 8 bits MSB first, start/busy/done |
-| `spi_slave`       | SPI slave: any mode, MSB or LSB first, any word width, optional tri-state MISO. Runs on the system clock (no SCLK-clocked logic, so no extra clock domain); needs `clk` at least 4 times SCLK |
+| `spi_slave`       | SPI slave: any mode, MSB or LSB first, any word width, optional tri-state MISO. Runs on the system clock (no SCLK-clocked logic, so no extra clock domain); needs `clk` at least 8 times SCLK |
 | `i2c_master`      | I2C master: one command per byte (optional START, write or read a byte, optional STOP), so any transaction incl. repeated START; clock stretching; open-drain pins as `*_i` / `*_oe`. Single master, 7-bit addresses |
 | `i2c_slave`       | I2C slave: 7-bit address, `addr_match` / `rx_data` / `tx_req` / `start_evt` / `stop_evt` byte interface, runs on the system clock (needs `clk` at least 8 times SCL), does not stretch |
 | `axis_skid`       | AXI4-Stream register slice (skid buffer): registered data and ready, full throughput |
@@ -329,9 +329,10 @@ Single braces such as `{ PACKAGE_PIN ... }` in XDC files are literal.
   buses use a Gray-coded async FIFO or a handshake. Constrain the crossing in
   the XDC/SDC file (`set_false_path`, `set_max_delay -datapath_only`, or
   `set_clock_groups -asynchronous`).
-- **Vendor attributes** (`async_reg`, `ram_style`, `mark_debug`,
-  `fsm_encoding`) are Xilinx. The Intel equivalents are in comments next to
-  them.
+- **Vendor attributes.** Every synchronizer chain carries both `async_reg`
+  (Xilinx) and `SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS` (Intel).
+  `ram_style`, `mark_debug` and `fsm_encoding` are Xilinx; their Intel
+  equivalents are in comments next to them.
 
 ### Simulating with GHDL
 

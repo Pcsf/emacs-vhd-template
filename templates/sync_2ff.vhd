@@ -25,14 +25,12 @@ architecture rtl of {{entity}} is
 
   signal sync : std_logic_vector(G_STAGES - 1 downto 0) := (others => G_INIT);
 
-  -- Xilinx: keep the flops together and treat them as a synchronizer.
+  -- Xilinx and Intel: keep the flops together and treat them as a synchronizer.
   attribute async_reg : string;
   attribute async_reg of sync : signal is "true";
-
-  -- Intel Quartus:
-  --   attribute altera_attribute : string;
-  --   attribute altera_attribute of rtl : architecture is
-  --     "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
+  attribute altera_attribute : string;
+  attribute altera_attribute of sync : signal is
+    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
 
 begin
 

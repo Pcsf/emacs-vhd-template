@@ -72,6 +72,15 @@ architecture rtl of {{entity}} is
   attribute async_reg of rd_gray_w2 : signal is "true";
   attribute async_reg of wr_gray_r1 : signal is "true";
   attribute async_reg of wr_gray_r2 : signal is "true";
+  attribute altera_attribute : string;
+  attribute altera_attribute of rd_gray_w1 : signal is
+    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
+  attribute altera_attribute of rd_gray_w2 : signal is
+    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
+  attribute altera_attribute of wr_gray_r1 : signal is
+    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
+  attribute altera_attribute of wr_gray_r2 : signal is
+    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
 
 begin
 

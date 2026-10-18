@@ -2,9 +2,12 @@
 {{>header.vhd}}
 
 -- The three SPI inputs are synchronized to `clk` and their edges are detected
--- there, so no SCLK-clocked logic and no extra clock domain: `clk` has to be
--- at least 4 times faster than SCLK, and the master must hold CS low for at
--- least 3 `clk` periods before the first SCLK edge.
+-- there, so no SCLK-clocked logic and no extra clock domain.  MISO changes up
+-- to 3 `clk` periods after the CS or SCLK edge that causes it, so half an SCLK
+-- period, and the time from CS falling to the first SCLK edge, must both
+-- exceed 3 `clk` periods plus the MISO output and board delay and the
+-- master's setup time.  `clk` at least 8 times SCLK leaves one `clk` period
+-- for those delays.
 --
 -- tx_data is taken when CS falls (it must be stable then); it is shifted out
 -- on MISO.  When G_WIDTH bits have been received, rx_data holds them and
@@ -56,6 +59,13 @@ architecture rtl of {{entity}} is
   attribute async_reg of sclk_q : signal is "true";
   attribute async_reg of cs_q   : signal is "true";
   attribute async_reg of mosi_q : signal is "true";
+  attribute altera_attribute : string;
+  attribute altera_attribute of sclk_q : signal is
+    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
+  attribute altera_attribute of cs_q   : signal is
+    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
+  attribute altera_attribute of mosi_q : signal is
+    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
 
   signal tx_sh   : std_logic_vector(G_WIDTH - 1 downto 0) := (others => '0');
   signal rx_sh   : std_logic_vector(G_WIDTH - 1 downto 0) := (others => '0');

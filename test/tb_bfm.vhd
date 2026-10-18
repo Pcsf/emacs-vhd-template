@@ -34,9 +34,10 @@ end entity tb_spi_slave_bench;
 architecture sim of tb_spi_slave_bench is
 
   function make_config return t_spi_bfm_config is
+    -- SCLK at the documented minimum of 8 clk periods, CS setup at 4.
     variable v_cfg : t_spi_bfm_config :=
-      (cpol => '0', cpha => '0', sclk_period => 100 ns, msb_first => G_MSB,
-       word_width => G_WIDTH, cs_setup => 100 ns, cs_hold => 100 ns, timeout => 100 us);
+      (cpol => '0', cpha => '0', sclk_period => 80 ns, msb_first => G_MSB,
+       word_width => G_WIDTH, cs_setup => 40 ns, cs_hold => 100 ns, timeout => 100 us);
   begin
     if G_MODE >= 2 then
       v_cfg.cpol := '1';
