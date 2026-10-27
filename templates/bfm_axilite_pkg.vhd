@@ -1,7 +1,7 @@
 {{!BFM: AXI4-Lite master (write, read, check) with response checking and back-pressure}}
 {{>header.vhd}}
 
--- Usage (in a testbench, needs bfm_util_pkg):
+-- Usage (in a testbench, needs tb_util_pkg):
 --   signal axi_m2s : t_axilite_m2s := C_AXILITE_M2S_INIT;   -- BFM -> DUT
 --   signal axi_s2m : t_axilite_s2m;                         -- DUT -> BFM
 --   axilite_write(x"00000000", x"DEADBEEF", "write CONTROL", clk, axi_m2s, axi_s2m);
@@ -16,7 +16,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 
 package {{pkg|$file}} is
 
@@ -81,7 +81,7 @@ package {{pkg|$file}} is
     signal   s2m      : in  t_axilite_s2m;
     constant strb     : in  t_axilite_strb := (others => '1');
     constant exp_resp : in  t_axi_resp     := C_AXI_RESP_OKAY;
-    constant scope    : in  string         := C_BFM_SCOPE;
+    constant scope    : in  string         := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_axilite_bfm_config := C_AXILITE_BFM_CONFIG_DEFAULT);
 
   procedure axilite_read (
@@ -92,7 +92,7 @@ package {{pkg|$file}} is
     signal   m2s      : out t_axilite_m2s;
     signal   s2m      : in  t_axilite_s2m;
     constant exp_resp : in  t_axi_resp     := C_AXI_RESP_OKAY;
-    constant scope    : in  string         := C_BFM_SCOPE;
+    constant scope    : in  string         := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_axilite_bfm_config := C_AXILITE_BFM_CONFIG_DEFAULT);
 
   procedure axilite_check (
@@ -103,7 +103,7 @@ package {{pkg|$file}} is
     signal   m2s      : out t_axilite_m2s;
     signal   s2m      : in  t_axilite_s2m;
     constant exp_resp : in  t_axi_resp     := C_AXI_RESP_OKAY;
-    constant scope    : in  string         := C_BFM_SCOPE;
+    constant scope    : in  string         := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_axilite_bfm_config := C_AXILITE_BFM_CONFIG_DEFAULT);
 
 end package {{pkg}};
@@ -119,13 +119,13 @@ package body {{pkg}} is
     signal   s2m      : in  t_axilite_s2m;
     constant strb     : in  t_axilite_strb := (others => '1');
     constant exp_resp : in  t_axi_resp     := C_AXI_RESP_OKAY;
-    constant scope    : in  string         := C_BFM_SCOPE;
+    constant scope    : in  string         := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_axilite_bfm_config := C_AXILITE_BFM_CONFIG_DEFAULT) is
     variable v_aw   : boolean := false;
     variable v_w    : boolean := false;
     variable v_wait : natural := 0;
   begin
-    bfm_log(C_LOG_BFM, "axilite_write: " & msg & " addr 0x" & to_hstring(addr)
+    log(C_LOG_BFM, "axilite_write: " & msg & " addr 0x" & to_hstring(addr)
             & " data 0x" & to_hstring(data), scope);
     m2s.awaddr  <= addr;
     m2s.awvalid <= '1';
@@ -145,7 +145,7 @@ package body {{pkg}} is
       end if;
       v_wait := v_wait + 1;
       if v_wait >= config.max_wait_cycles and not (v_aw and v_w) then
-        bfm_alert(ERROR, "axilite_write: timeout waiting for awready / wready (" & msg & ")", scope);
+        alert(ERROR, "axilite_write: timeout waiting for awready / wready (" & msg & ")", scope);
         m2s.awvalid <= '0';
         m2s.wvalid  <= '0';
         exit;
@@ -162,12 +162,12 @@ package body {{pkg}} is
       exit when s2m.bvalid = '1';                -- taken at this edge
       v_wait := v_wait + 1;
       if v_wait >= config.max_wait_cycles then
-        bfm_alert(ERROR, "axilite_write: timeout waiting for bvalid (" & msg & ")", scope);
+        alert(ERROR, "axilite_write: timeout waiting for bvalid (" & msg & ")", scope);
         exit;
       end if;
     end loop;
     m2s.bready <= '0';
-    bfm_check_value(s2m.bresp, exp_resp, "axilite_write " & msg & ": bresp", scope);
+    check_value(s2m.bresp, exp_resp, "axilite_write " & msg & ": bresp", scope);
   end procedure axilite_write;
 
   procedure axilite_read (
@@ -178,7 +178,7 @@ package body {{pkg}} is
     signal   m2s      : out t_axilite_m2s;
     signal   s2m      : in  t_axilite_s2m;
     constant exp_resp : in  t_axi_resp     := C_AXI_RESP_OKAY;
-    constant scope    : in  string         := C_BFM_SCOPE;
+    constant scope    : in  string         := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_axilite_bfm_config := C_AXILITE_BFM_CONFIG_DEFAULT) is
     variable v_wait : natural := 0;
   begin
@@ -190,14 +190,14 @@ package body {{pkg}} is
       exit when s2m.arready = '1';               -- accepted at this edge
       v_wait := v_wait + 1;
       if v_wait >= config.max_wait_cycles then
-        bfm_alert(ERROR, "axilite_read: timeout waiting for arready (" & msg & ")", scope);
+        alert(ERROR, "axilite_read: timeout waiting for arready (" & msg & ")", scope);
         exit;
       end if;
     end loop;
     m2s.arvalid <= '0';
     for i in 1 to config.rready_delay loop
       wait until rising_edge(clk);
-      bfm_check(s2m.rvalid = '1', "axilite_read " & msg & ": rvalid held until rready", scope);
+      check_value(s2m.rvalid = '1', "axilite_read " & msg & ": rvalid held until rready", scope);
     end loop;
     m2s.rready <= '1';
     v_wait := 0;
@@ -205,17 +205,17 @@ package body {{pkg}} is
       wait until rising_edge(clk);
       if s2m.rvalid = '1' then                   -- taken at this edge
         data := s2m.rdata;
-        bfm_check_value(s2m.rresp, exp_resp, "axilite_read " & msg & ": rresp", scope);
+        check_value(s2m.rresp, exp_resp, "axilite_read " & msg & ": rresp", scope);
         exit;
       end if;
       v_wait := v_wait + 1;
       if v_wait >= config.max_wait_cycles then
-        bfm_alert(ERROR, "axilite_read: timeout waiting for rvalid (" & msg & ")", scope);
+        alert(ERROR, "axilite_read: timeout waiting for rvalid (" & msg & ")", scope);
         exit;
       end if;
     end loop;
     m2s.rready <= '0';
-    bfm_log(C_LOG_BFM, "axilite_read: " & msg & " addr 0x" & to_hstring(addr)
+    log(C_LOG_BFM, "axilite_read: " & msg & " addr 0x" & to_hstring(addr)
             & " data 0x" & to_hstring(data), scope);
   end procedure axilite_read;
 
@@ -227,12 +227,12 @@ package body {{pkg}} is
     signal   m2s      : out t_axilite_m2s;
     signal   s2m      : in  t_axilite_s2m;
     constant exp_resp : in  t_axi_resp     := C_AXI_RESP_OKAY;
-    constant scope    : in  string         := C_BFM_SCOPE;
+    constant scope    : in  string         := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_axilite_bfm_config := C_AXILITE_BFM_CONFIG_DEFAULT) is
     variable v_data : t_axilite_data;
   begin
     axilite_read(addr, v_data, msg, clk, m2s, s2m, exp_resp, scope, config);
-    bfm_check_value(v_data, exp_data, "axilite_check " & msg, scope);
+    check_value(v_data, exp_data, "axilite_check " & msg, scope);
   end procedure axilite_check;
 
 end package body {{pkg}};

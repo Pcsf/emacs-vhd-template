@@ -1,7 +1,7 @@
 {{!Testbench with BFMs for an AXI-Stream DUT: TC-numbered sequencer, sink checker, final report}}
 {{>header.vhd}}
 
--- Needs bfm_util_pkg and bfm_axis_pkg, and a DUT with this port list (the
+-- Needs tb_util_pkg and bfm_axis_pkg, and a DUT with this port list (the
 -- axis_skid template has it).  The sequencer drives, a separate process
 -- checks: the source BFM sends packets, the sink BFM expects the same ones.
 -- Add one TC block to both processes per behaviour.
@@ -10,7 +10,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 use work.bfm_axis_pkg.all;
 
 entity {{tb|$file}} is
@@ -22,8 +22,7 @@ architecture sim of {{tb}} is
   constant C_SCOPE      : string := "{{tb}}";
 
   signal clk       : std_logic := '0';
-  signal rst       : std_logic := '1';
-  signal stop      : boolean   := false;
+  signal rst       : std_logic := '0';
   signal sink_done : boolean   := false;
 
   signal src_m2s : t_axis_m2s := C_AXIS_M2S_INIT;   -- source BFM -> DUT
@@ -66,40 +65,30 @@ begin
 
   p_clk : process
   begin
-    while not stop loop
-      clk <= '0';
-      wait for C_CLK_PERIOD / 2;
-      clk <= '1';
-      wait for C_CLK_PERIOD / 2;
-    end loop;
-    wait;
+    clock_generator(clk, C_CLK_PERIOD);
   end process p_clk;
 
   -- Sequencer: stimulus only.
   p_sequencer : process
   begin
-    bfm_log(C_LOG_HDR, "Applying reset", C_SCOPE);
-    rst <= '1';
-    bfm_wait_cycles(4, clk);
-    rst <= '0';
-    bfm_wait_cycles(1, clk);
+    gen_pulse(rst, '1', clk, 4, "reset", C_SCOPE);
+    wait_num_rising_edges(clk, 1);
 
-    bfm_log(C_LOG_HDR, "TC-01: a single-beat packet passes", C_SCOPE);
+    tc_start("TC-01", "a single-beat packet passes", C_SCOPE);
     axis_transmit(packet(1, 1), "TC-01", clk, src_m2s, src_s2m, C_SCOPE);
 
-    bfm_log(C_LOG_HDR, "TC-02: an 8-beat packet passes back to back", C_SCOPE);
+    tc_start("TC-02", "an 8-beat packet passes back to back", C_SCOPE);
     axis_transmit(packet(2, 8), "TC-02", clk, src_m2s, src_s2m, C_SCOPE);
 
-    bfm_log(C_LOG_HDR, "TC-03: a packet with gaps on the source and back-pressure on the sink", C_SCOPE);
+    tc_start("TC-03", "a packet with gaps on the source and back-pressure on the sink", C_SCOPE);
     axis_transmit(packet(3, 6), "TC-03", clk, src_m2s, src_s2m, C_SCOPE, C_SLOW_SOURCE);
 
     {{_}}
 
-    wait until sink_done;
-    bfm_wait_cycles(4, clk);
-    bfm_report_final(C_SCOPE);
-    stop <= true;
-    wait;
+    await_value(sink_done, true, 0 ns, 1 ms, "sink done", C_SCOPE);
+    wait_num_rising_edges(clk, 4);
+    report_final(C_SCOPE);
+    std.env.stop;
   end process p_sequencer;
 
   -- Checker: the sink BFM compares every packet with the expected one.
@@ -114,11 +103,8 @@ begin
 
   p_watchdog : process
   begin
-    wait until stop for 1 ms;
-    if not stop then
-      bfm_alert(FAILURE, "watchdog: the test did not finish", C_SCOPE);
-    end if;
-    wait;
+    wait for {{timeout|1 ms}};
+    alert(FAILURE, "watchdog: the test did not finish", C_SCOPE);
   end process p_watchdog;
 
 end architecture sim;

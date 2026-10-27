@@ -1,7 +1,7 @@
 {{!BFM: Avalon-MM master (write, read, check) with waitrequest and readdatavalid handling}}
 {{>header.vhd}}
 
--- Usage (in a testbench, needs bfm_util_pkg):
+-- Usage (in a testbench, needs tb_util_pkg):
 --   signal av_m2s : t_avmm_m2s := C_AVMM_M2S_INIT;   -- BFM -> DUT
 --   signal av_s2m : t_avmm_s2m;                      -- DUT -> BFM
 --   avmm_write(x"00", x"DEADBEEF", "write CONTROL", clk, av_m2s, av_s2m);
@@ -15,7 +15,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 
 package {{pkg|$file}} is
 
@@ -58,7 +58,7 @@ package {{pkg|$file}} is
     signal   m2s        : out t_avmm_m2s;
     signal   s2m        : in  t_avmm_s2m;
     constant byteenable : in  t_avmm_be := (others => '1');
-    constant scope      : in  string    := C_BFM_SCOPE;
+    constant scope      : in  string    := C_TB_SCOPE_DEFAULT;
     constant config     : in  t_avmm_bfm_config := C_AVMM_BFM_CONFIG_DEFAULT);
 
   procedure avmm_read (
@@ -68,7 +68,7 @@ package {{pkg|$file}} is
     signal   clk    : in  std_logic;
     signal   m2s    : out t_avmm_m2s;
     signal   s2m    : in  t_avmm_s2m;
-    constant scope  : in  string := C_BFM_SCOPE;
+    constant scope  : in  string := C_TB_SCOPE_DEFAULT;
     constant config : in  t_avmm_bfm_config := C_AVMM_BFM_CONFIG_DEFAULT);
 
   procedure avmm_check (
@@ -78,7 +78,7 @@ package {{pkg|$file}} is
     signal   clk      : in  std_logic;
     signal   m2s      : out t_avmm_m2s;
     signal   s2m      : in  t_avmm_s2m;
-    constant scope    : in  string := C_BFM_SCOPE;
+    constant scope    : in  string := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_avmm_bfm_config := C_AVMM_BFM_CONFIG_DEFAULT);
 
 end package {{pkg}};
@@ -93,11 +93,11 @@ package body {{pkg}} is
     signal   m2s        : out t_avmm_m2s;
     signal   s2m        : in  t_avmm_s2m;
     constant byteenable : in  t_avmm_be := (others => '1');
-    constant scope      : in  string    := C_BFM_SCOPE;
+    constant scope      : in  string    := C_TB_SCOPE_DEFAULT;
     constant config     : in  t_avmm_bfm_config := C_AVMM_BFM_CONFIG_DEFAULT) is
     variable v_wait : natural := 0;
   begin
-    bfm_log(C_LOG_BFM, "avmm_write: " & msg & " addr 0x" & to_hstring(addr)
+    log(C_LOG_BFM, "avmm_write: " & msg & " addr 0x" & to_hstring(addr)
             & " data 0x" & to_hstring(data), scope);
     m2s.address    <= addr;
     m2s.writedata  <= data;
@@ -108,7 +108,7 @@ package body {{pkg}} is
       exit when s2m.waitrequest = '0';           -- accepted at this edge
       v_wait := v_wait + 1;
       if v_wait >= config.max_wait_cycles then
-        bfm_alert(ERROR, "avmm_write: timeout waiting for waitrequest low (" & msg & ")", scope);
+        alert(ERROR, "avmm_write: timeout waiting for waitrequest low (" & msg & ")", scope);
         exit;
       end if;
     end loop;
@@ -122,7 +122,7 @@ package body {{pkg}} is
     signal   clk    : in  std_logic;
     signal   m2s    : out t_avmm_m2s;
     signal   s2m    : in  t_avmm_s2m;
-    constant scope  : in  string := C_BFM_SCOPE;
+    constant scope  : in  string := C_TB_SCOPE_DEFAULT;
     constant config : in  t_avmm_bfm_config := C_AVMM_BFM_CONFIG_DEFAULT) is
     variable v_wait : natural := 0;
   begin
@@ -135,7 +135,7 @@ package body {{pkg}} is
       exit when s2m.waitrequest = '0';           -- accepted at this edge
       v_wait := v_wait + 1;
       if v_wait >= config.max_wait_cycles then
-        bfm_alert(ERROR, "avmm_read: timeout waiting for waitrequest low (" & msg & ")", scope);
+        alert(ERROR, "avmm_read: timeout waiting for waitrequest low (" & msg & ")", scope);
         exit;
       end if;
     end loop;
@@ -149,11 +149,11 @@ package body {{pkg}} is
       end if;
       v_wait := v_wait + 1;
       if v_wait >= config.max_wait_cycles then
-        bfm_alert(ERROR, "avmm_read: timeout waiting for readdatavalid (" & msg & ")", scope);
+        alert(ERROR, "avmm_read: timeout waiting for readdatavalid (" & msg & ")", scope);
         exit;
       end if;
     end loop;
-    bfm_log(C_LOG_BFM, "avmm_read: " & msg & " addr 0x" & to_hstring(addr)
+    log(C_LOG_BFM, "avmm_read: " & msg & " addr 0x" & to_hstring(addr)
             & " data 0x" & to_hstring(data), scope);
   end procedure avmm_read;
 
@@ -164,12 +164,12 @@ package body {{pkg}} is
     signal   clk      : in  std_logic;
     signal   m2s      : out t_avmm_m2s;
     signal   s2m      : in  t_avmm_s2m;
-    constant scope    : in  string := C_BFM_SCOPE;
+    constant scope    : in  string := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_avmm_bfm_config := C_AVMM_BFM_CONFIG_DEFAULT) is
     variable v_data : t_avmm_data;
   begin
     avmm_read(addr, v_data, msg, clk, m2s, s2m, scope, config);
-    bfm_check_value(v_data, exp_data, "avmm_check " & msg, scope);
+    check_value(v_data, exp_data, "avmm_check " & msg, scope);
   end procedure avmm_check;
 
 end package body {{pkg}};

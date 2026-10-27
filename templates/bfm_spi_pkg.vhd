@@ -1,7 +1,7 @@
 {{!BFM: SPI master and slave, modes 0-3, MSB or LSB first, 1-32 bits per word}}
 {{>header.vhd}}
 
--- Usage (in a testbench, needs bfm_util_pkg):
+-- Usage (in a testbench, needs tb_util_pkg):
 --   constant C_SPI : t_spi_bfm_config := (cpol => '0', cpha => '0',
 --     sclk_period => 1 us, msb_first => true, word_width => 8,
 --     cs_setup => 100 ns, cs_hold => 100 ns, timeout => 1 ms);
@@ -22,7 +22,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 
 package {{pkg|$file}} is
 
@@ -69,7 +69,7 @@ package {{pkg|$file}} is
     constant msg     : in  string;
     signal   m2s     : out t_spi_m2s;
     signal   s2m     : in  t_spi_s2m;
-    constant scope   : in  string           := C_BFM_SCOPE;
+    constant scope   : in  string           := C_TB_SCOPE_DEFAULT;
     constant config  : in  t_spi_bfm_config := C_SPI_BFM_CONFIG_DEFAULT);
 
   procedure spi_master_check (
@@ -78,7 +78,7 @@ package {{pkg|$file}} is
     constant msg     : in  string;
     signal   m2s     : out t_spi_m2s;
     signal   s2m     : in  t_spi_s2m;
-    constant scope   : in  string           := C_BFM_SCOPE;
+    constant scope   : in  string           := C_TB_SCOPE_DEFAULT;
     constant config  : in  t_spi_bfm_config := C_SPI_BFM_CONFIG_DEFAULT);
 
   -- Slave: waits for CS, shifts tx_data out, returns what the master sent.
@@ -88,7 +88,7 @@ package {{pkg|$file}} is
     constant msg     : in  string;
     signal   m2s     : in  t_spi_m2s;
     signal   s2m     : out t_spi_s2m;
-    constant scope   : in  string           := C_BFM_SCOPE;
+    constant scope   : in  string           := C_TB_SCOPE_DEFAULT;
     constant config  : in  t_spi_bfm_config := C_SPI_BFM_CONFIG_DEFAULT);
 
   procedure spi_slave_check (
@@ -97,7 +97,7 @@ package {{pkg|$file}} is
     constant msg     : in  string;
     signal   m2s     : in  t_spi_m2s;
     signal   s2m     : out t_spi_s2m;
-    constant scope   : in  string           := C_BFM_SCOPE;
+    constant scope   : in  string           := C_TB_SCOPE_DEFAULT;
     constant config  : in  t_spi_bfm_config := C_SPI_BFM_CONFIG_DEFAULT);
 
 end package {{pkg}};
@@ -139,13 +139,13 @@ package body {{pkg}} is
     constant msg     : in  string;
     signal   m2s     : out t_spi_m2s;
     signal   s2m     : in  t_spi_s2m;
-    constant scope   : in  string           := C_BFM_SCOPE;
+    constant scope   : in  string           := C_TB_SCOPE_DEFAULT;
     constant config  : in  t_spi_bfm_config := C_SPI_BFM_CONFIG_DEFAULT) is
     constant C_HALF : time    := config.sclk_period / 2;
     constant C_W    : natural := config.word_width;
     variable v_rx   : t_spi_word := (others => '0');
   begin
-    bfm_log(C_LOG_BFM, "spi_master_transfer: " & msg & " tx 0x"
+    log(C_LOG_BFM, "spi_master_transfer: " & msg & " tx 0x"
             & to_hstring(tx_data and width_mask(config)), scope);
     m2s.sclk <= config.cpol;                     -- clock at idle before CS falls, so
     wait for config.cs_setup;                    -- a mode change is not seen as an edge
@@ -185,12 +185,12 @@ package body {{pkg}} is
     constant msg     : in  string;
     signal   m2s     : out t_spi_m2s;
     signal   s2m     : in  t_spi_s2m;
-    constant scope   : in  string           := C_BFM_SCOPE;
+    constant scope   : in  string           := C_TB_SCOPE_DEFAULT;
     constant config  : in  t_spi_bfm_config := C_SPI_BFM_CONFIG_DEFAULT) is
     variable v_rx : t_spi_word;
   begin
     spi_master_transfer(tx_data, v_rx, msg, m2s, s2m, scope, config);
-    bfm_check_value(v_rx and width_mask(config), exp_rx and width_mask(config),
+    check_value(v_rx and width_mask(config), exp_rx and width_mask(config),
                     "spi_master_check " & msg, scope);
   end procedure spi_master_check;
 
@@ -200,7 +200,7 @@ package body {{pkg}} is
     constant msg     : in  string;
     signal   m2s     : in  t_spi_m2s;
     signal   s2m     : out t_spi_s2m;
-    constant scope   : in  string           := C_BFM_SCOPE;
+    constant scope   : in  string           := C_TB_SCOPE_DEFAULT;
     constant config  : in  t_spi_bfm_config := C_SPI_BFM_CONFIG_DEFAULT) is
     constant C_W  : natural := config.word_width;
     variable v_rx : t_spi_word := (others => '0');
@@ -209,7 +209,7 @@ package body {{pkg}} is
     if m2s.cs_n /= '0' then
       wait until m2s.cs_n = '0' for config.timeout;
       if m2s.cs_n /= '0' then
-        bfm_alert(ERROR, "spi_slave_transfer: timeout waiting for chip select (" & msg & ")", scope);
+        alert(ERROR, "spi_slave_transfer: timeout waiting for chip select (" & msg & ")", scope);
         return;
       end if;
     end if;
@@ -237,7 +237,7 @@ package body {{pkg}} is
     end if;
     s2m.miso <= '0';
     rx_data := v_rx;
-    bfm_log(C_LOG_BFM, "spi_slave_transfer: " & msg & " rx 0x"
+    log(C_LOG_BFM, "spi_slave_transfer: " & msg & " rx 0x"
             & to_hstring(v_rx and width_mask(config)), scope);
   end procedure spi_slave_transfer;
 
@@ -247,12 +247,12 @@ package body {{pkg}} is
     constant msg     : in  string;
     signal   m2s     : in  t_spi_m2s;
     signal   s2m     : out t_spi_s2m;
-    constant scope   : in  string           := C_BFM_SCOPE;
+    constant scope   : in  string           := C_TB_SCOPE_DEFAULT;
     constant config  : in  t_spi_bfm_config := C_SPI_BFM_CONFIG_DEFAULT) is
     variable v_rx : t_spi_word;
   begin
     spi_slave_transfer(tx_data, v_rx, msg, m2s, s2m, scope, config);
-    bfm_check_value(v_rx and width_mask(config), exp_rx and width_mask(config),
+    check_value(v_rx and width_mask(config), exp_rx and width_mask(config),
                     "spi_slave_check " & msg, scope);
   end procedure spi_slave_check;
 

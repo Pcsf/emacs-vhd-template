@@ -13,7 +13,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 use work.bfm_spi_pkg.all;
 
 -- The master BFM talks to one spi_slave configured for one mode, word width
@@ -113,12 +113,12 @@ begin
       spi_master_transfer(C_MASTER_WORDS(i), v_rx, C_TAG & " frame " & integer'image(i),
                           m2s, s2m, C_TAG, C_CFG);
       wait for 30 ns;
-      bfm_check_value(v_rx(G_WIDTH - 1 downto 0), low(C_SLAVE_WORDS(i)),
+      check_value(v_rx(G_WIDTH - 1 downto 0), low(C_SLAVE_WORDS(i)),
                       C_TAG & ": master receives the slave word, frame " & integer'image(i), C_TAG);
-      bfm_check(got_count = v_n + 1, C_TAG & ": one rx_valid pulse, frame " & integer'image(i), C_TAG);
-      bfm_check_value(got_data, low(C_MASTER_WORDS(i)),
+      check_value(got_count = v_n + 1, C_TAG & ": one rx_valid pulse, frame " & integer'image(i), C_TAG);
+      check_value(got_data, low(C_MASTER_WORDS(i)),
                       C_TAG & ": slave receives the master word, frame " & integer'image(i), C_TAG);
-      bfm_check(active = '0', C_TAG & ": not active after CS rises", C_TAG);
+      check_value(active = '0', C_TAG & ": not active after CS rises", C_TAG);
     end procedure full_frame;
   begin
     wait until rst = '0';
@@ -134,7 +134,7 @@ begin
     v_n := got_count;
     spi_master_transfer(C_MASTER_WORDS(0), v_rx, C_TAG & " short frame", m2s, s2m, C_TAG, v_cfg);
     wait for 30 ns;
-    bfm_check(got_count = v_n, C_TAG & ": no rx_valid for a short frame", C_TAG);
+    check_value(got_count = v_n, C_TAG & ": no rx_valid for a short frame", C_TAG);
 
     -- One clock too many: the first G_WIDTH bits are delivered once, the rest ignored.
     if G_WIDTH < 32 then
@@ -145,12 +145,12 @@ begin
       v_n := got_count;
       spi_master_transfer(C_MASTER_WORDS(1), v_rx, C_TAG & " long frame", m2s, s2m, C_TAG, v_cfg);
       wait for 30 ns;
-      bfm_check(got_count = v_n + 1, C_TAG & ": one rx_valid for a long frame", C_TAG);
+      check_value(got_count = v_n + 1, C_TAG & ": one rx_valid for a long frame", C_TAG);
       if G_MSB then   -- the first G_WIDTH bits on the wire
-        bfm_check_value(got_data, C_MASTER_WORDS(1)(G_WIDTH downto 1),
+        check_value(got_data, C_MASTER_WORDS(1)(G_WIDTH downto 1),
                         C_TAG & ": long frame keeps the first bits", C_TAG);
       else
-        bfm_check_value(got_data, low(C_MASTER_WORDS(1)),
+        check_value(got_data, low(C_MASTER_WORDS(1)),
                         C_TAG & ": long frame keeps the first bits", C_TAG);
       end if;
     end if;
@@ -167,7 +167,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 use work.bfm_axis_pkg.all;
 use work.bfm_avalon_st_pkg.all;
 use work.bfm_axilite_pkg.all;
@@ -360,7 +360,7 @@ begin
   p_reset : process
   begin
     rst <= '1';
-    bfm_wait_cycles(5, clk);
+    wait_num_rising_edges(clk, 5);
     rst <= '0';
     wait;
   end process p_reset;
@@ -476,7 +476,7 @@ begin
     wait until rst = '0';
     wait until rising_edge(clk);
     axilite_write(x"00000000", x"DEADBEEF", "CONTROL", clk, al_m2s, al_s2m, scope => C_SCOPE);
-    bfm_check_value(al_control, x"DEADBEEF", "CONTROL drives its output", C_SCOPE);
+    check_value(al_control, x"DEADBEEF", "CONTROL drives its output", C_SCOPE);
     axilite_check(x"00000000", x"DEADBEEF", "CONTROL", clk, al_m2s, al_s2m, scope => C_SCOPE);
     axilite_write(x"00000008", x"FFFFFFFF", "SCRATCH ones", clk, al_m2s, al_s2m, scope => C_SCOPE);
     axilite_write(x"00000008", x"00000000", "SCRATCH strobes 0101", clk, al_m2s, al_s2m,
@@ -493,7 +493,7 @@ begin
                   clk, al_m2s, al_s2m, scope => C_SCOPE);
     axilite_write(x"00000000", x"00000000", "CONTROL strobes 1010", clk, al_m2s, al_s2m,
                   strb => "1010", scope => C_SCOPE);
-    bfm_check_value(al_control, x"00AD00EF", "CONTROL output after strobed write", C_SCOPE);
+    check_value(al_control, x"00AD00EF", "CONTROL output after strobed write", C_SCOPE);
     axilite_check(x"0000000C", x"00010000", "VERSION", clk, al_m2s, al_s2m, scope => C_SCOPE);
     done(6) <= '1';
     wait;
@@ -517,8 +517,8 @@ begin
     wait until rst = '0';
     wait until rising_edge(clk);
     avmm_write(x"00", x"DEADBEEF", "CONTROL", clk, av_m2s, av_s2m, scope => C_SCOPE);
-    bfm_wait_cycles(1, clk);            -- the write returns on the edge the slave latches it
-    bfm_check_value(av_control, x"DEADBEEF", "CONTROL drives its output", C_SCOPE);
+    wait_num_rising_edges(clk, 1);            -- the write returns on the edge the slave latches it
+    check_value(av_control, x"DEADBEEF", "CONTROL drives its output", C_SCOPE);
     avmm_check(x"00", x"DEADBEEF", "CONTROL", clk, av_m2s, av_s2m, C_SCOPE);
     avmm_write(x"02", x"FFFFFFFF", "SCRATCH ones", clk, av_m2s, av_s2m, scope => C_SCOPE);
     avmm_write(x"02", x"00000000", "SCRATCH byteenable 0101", clk, av_m2s, av_s2m,
@@ -531,8 +531,8 @@ begin
     avmm_check(x"00", x"DEADBEEF", "CONTROL untouched by the read-only writes", clk, av_m2s, av_s2m, C_SCOPE);
     avmm_write(x"00", x"00000000", "CONTROL byteenable 1010", clk, av_m2s, av_s2m,
                byteenable => "1010", scope => C_SCOPE);
-    bfm_wait_cycles(1, clk);
-    bfm_check_value(av_control, x"00AD00EF", "CONTROL output after byteenabled write", C_SCOPE);
+    wait_num_rising_edges(clk, 1);
+    check_value(av_control, x"00AD00EF", "CONTROL output after byteenabled write", C_SCOPE);
     avmm_check(x"03", x"00010000", "VERSION", clk, av_m2s, av_s2m, C_SCOPE);
     done(7) <= '1';
     wait;
@@ -568,11 +568,11 @@ begin
   begin
     for i in C_BYTES'range loop
       wait until rising_edge(clk) and u_rx_valid = '1';
-      bfm_check_value(u_rx_data, C_BYTES(i), "uart_rx byte " & integer'image(i), C_SCOPE);
+      check_value(u_rx_data, C_BYTES(i), "uart_rx byte " & integer'image(i), C_SCOPE);
       if i = C_BYTES'high then
-        bfm_check_value(u_rx_err, '1', "uart_rx flags the low stop bit", C_SCOPE);
+        check_value(u_rx_err, '1', "uart_rx flags the low stop bit", C_SCOPE);
       else
-        bfm_check_value(u_rx_err, '0', "uart_rx no framing error, byte " & integer'image(i), C_SCOPE);
+        check_value(u_rx_err, '0', "uart_rx no framing error, byte " & integer'image(i), C_SCOPE);
       end if;
     end loop;
     done(9) <= '1';
@@ -675,9 +675,9 @@ begin
       sp_start <= '0';
       wait until rising_edge(clk) and sp_done = '1';
       wait for 1 ns;
-      bfm_check_value(sp_rx, std_logic_vector(to_unsigned(C_RX(i), 8)),
+      check_value(sp_rx, std_logic_vector(to_unsigned(C_RX(i), 8)),
                       "spi_master DUT receives the slave BFM word " & integer'image(i), C_SCOPE);
-      bfm_wait_cycles(3, clk);
+      wait_num_rising_edges(clk, 3);
     end loop;
     done(14) <= '1';
     wait;
@@ -769,10 +769,10 @@ begin
                             & " width " & integer'image(v_cfg.word_width),
                             rf_m2s, rf_s2m, C_SCOPE, v_cfg);
         wait for 1 ns;
-        bfm_check_value(v_rx and mask(v_cfg.word_width), C_SPI_S_WORD and mask(v_cfg.word_width),
+        check_value(v_rx and mask(v_cfg.word_width), C_SPI_S_WORD and mask(v_cfg.word_width),
                         "master BFM receives the reference slave word, mode " & integer'image(mode)
                         & " width " & integer'image(v_cfg.word_width), C_SCOPE);
-        bfm_check_value(rf_rx and mask(v_cfg.word_width), C_SPI_M_WORD and mask(v_cfg.word_width),
+        check_value(rf_rx and mask(v_cfg.word_width), C_SPI_M_WORD and mask(v_cfg.word_width),
                         "reference slave receives the master BFM word, mode " & integer'image(mode)
                         & " width " & integer'image(v_cfg.word_width), C_SCOPE);
       end loop;
@@ -836,11 +836,11 @@ begin
   begin
     wait until done = (done'range => '1') and slave_done = (slave_done'range => '1') for 2 ms;
     if done /= (done'range => '1') or slave_done /= (slave_done'range => '1') then
-      bfm_alert(ERROR, "timeout, blocks not finished: " & to_string(done)
+      alert(ERROR, "timeout, blocks not finished: " & to_string(done)
                 & " / " & to_string(slave_done), C_SCOPE);
     end if;
     wait for 100 ns;
-    bfm_report_final(C_SCOPE);
+    report_final(C_SCOPE);
     stop <= true;
     wait;
   end process p_verdict;

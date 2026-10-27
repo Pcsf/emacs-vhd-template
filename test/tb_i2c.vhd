@@ -9,7 +9,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 
 -- A small driver for the i2c_master command interface: whole transactions
 -- (START, address, bytes, STOP) built from single-byte commands.
@@ -258,7 +258,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 use work.bfm_i2c_pkg.all;
 use work.tb_i2c_pkg.all;
 
@@ -318,7 +318,7 @@ begin
   p_reset : process
   begin
     rst <= '1';
-    bfm_wait_cycles(5, clk);
+    wait_num_rising_edges(clk, 5);
     rst <= '0';
     wait;
   end process p_reset;
@@ -351,29 +351,29 @@ begin
     wait for 200 ns;
 
     i2c_dut_write(C_ADDR, (x"12", x"34"), true, clk, a_cmd, a_rsp, v_addr_nack, v_data_nack);
-    bfm_check(not v_addr_nack and not v_data_nack, "A T1: write acknowledged", C_SCOPE);
+    check_value(not v_addr_nack and not v_data_nack, "A T1: write acknowledged", C_SCOPE);
 
     i2c_dut_read(C_ADDR, v_rd2, true, clk, a_cmd, a_rsp, v_addr_nack);
-    bfm_check(not v_addr_nack, "A T2: read address acknowledged", C_SCOPE);
-    bfm_check_value(v_rd2(0), x"9A", "A T2: first byte read", C_SCOPE);
-    bfm_check_value(v_rd2(1), x"C3", "A T2: second byte read", C_SCOPE);
+    check_value(not v_addr_nack, "A T2: read address acknowledged", C_SCOPE);
+    check_value(v_rd2(0), x"9A", "A T2: first byte read", C_SCOPE);
+    check_value(v_rd2(1), x"C3", "A T2: second byte read", C_SCOPE);
 
     -- pointer write, repeated START, read
     i2c_dut_write(C_ADDR, (0 => x"07"), false, clk, a_cmd, a_rsp, v_addr_nack, v_data_nack);
     i2c_dut_read(C_ADDR, v_rd1, true, clk, a_cmd, a_rsp, v_addr_nack);
-    bfm_check_value(v_rd1(0), x"5E", "A T3: byte read after a repeated START", C_SCOPE);
+    check_value(v_rd1(0), x"5E", "A T3: byte read after a repeated START", C_SCOPE);
 
     -- nobody answers: the master must see the NACK and release the bus
     i2c_dut_write(C_ADDR, (0 => x"55"), true, clk, a_cmd, a_rsp, v_addr_nack, v_data_nack);
-    bfm_check(v_addr_nack, "A T4: NACKed address is reported", C_SCOPE);
-    bfm_check(a_rsp.busy = '0', "A T4: master idle again", C_SCOPE);
+    check_value(v_addr_nack, "A T4: NACKed address is reported", C_SCOPE);
+    check_value(a_rsp.busy = '0', "A T4: master idle again", C_SCOPE);
 
     -- slave stretches the clock after every byte
     i2c_dut_write(C_ADDR, (x"A5", x"5A", x"C3"), true, clk, a_cmd, a_rsp, v_addr_nack, v_data_nack);
-    bfm_check(not v_addr_nack and not v_data_nack, "A T5: write with clock stretching", C_SCOPE);
+    check_value(not v_addr_nack and not v_data_nack, "A T5: write with clock stretching", C_SCOPE);
     i2c_dut_read(C_ADDR, v_rd2, true, clk, a_cmd, a_rsp, v_addr_nack);
-    bfm_check_value(v_rd2(0), x"3C", "A T5: first byte read with clock stretching", C_SCOPE);
-    bfm_check_value(v_rd2(1), x"81", "A T5: second byte read with clock stretching", C_SCOPE);
+    check_value(v_rd2(0), x"3C", "A T5: first byte read with clock stretching", C_SCOPE);
+    check_value(v_rd2(1), x"81", "A T5: second byte read with clock stretching", C_SCOPE);
 
     done(0) <= '1';
     wait;
@@ -434,8 +434,8 @@ begin
     i2c_master_check(C_ADDR, (x"B2", x"C3"), "B 0x10 region unchanged", b_scl, b_sda,
                      scope => C_SCOPE, config => C_CFG);
     wait for 1 us;
-    bfm_check(b_starts = 10, "B: slave saw 10 START conditions, got " & integer'image(b_starts), C_SCOPE);
-    bfm_check(b_stops = 7, "B: slave saw 7 STOP conditions, got " & integer'image(b_stops), C_SCOPE);
+    check_value(b_starts = 10, "B: slave saw 10 START conditions, got " & integer'image(b_starts), C_SCOPE);
+    check_value(b_stops = 7, "B: slave saw 7 STOP conditions, got " & integer'image(b_stops), C_SCOPE);
     done(2) <= '1';
     wait;
   end process p_b_master;
@@ -474,35 +474,35 @@ begin
 
     i2c_dut_write(C_ADDR, (x"20", x"11", x"22", x"33", x"44"), true, clk, c_cmd, c_rsp,
                   v_addr_nack, v_data_nack);
-    bfm_check(not v_addr_nack and not v_data_nack, "C: write acknowledged", C_SCOPE);
+    check_value(not v_addr_nack and not v_data_nack, "C: write acknowledged", C_SCOPE);
 
     i2c_dut_write(C_ADDR, (0 => x"20"), false, clk, c_cmd, c_rsp, v_addr_nack, v_data_nack);
     i2c_dut_read(C_ADDR, v_rd, true, clk, c_cmd, c_rsp, v_addr_nack);
-    bfm_check(not v_addr_nack, "C: read address acknowledged", C_SCOPE);
-    bfm_check_value(v_rd(0), x"11", "C: byte 0 read back", C_SCOPE);
-    bfm_check_value(v_rd(1), x"22", "C: byte 1 read back", C_SCOPE);
-    bfm_check_value(v_rd(2), x"33", "C: byte 2 read back", C_SCOPE);
-    bfm_check_value(v_rd(3), x"44", "C: byte 3 read back", C_SCOPE);
+    check_value(not v_addr_nack, "C: read address acknowledged", C_SCOPE);
+    check_value(v_rd(0), x"11", "C: byte 0 read back", C_SCOPE);
+    check_value(v_rd(1), x"22", "C: byte 1 read back", C_SCOPE);
+    check_value(v_rd(2), x"33", "C: byte 2 read back", C_SCOPE);
+    check_value(v_rd(3), x"44", "C: byte 3 read back", C_SCOPE);
 
     i2c_dut_write("1010001", (0 => x"00"), true, clk, c_cmd, c_rsp, v_addr_nack, v_data_nack);
-    bfm_check(v_addr_nack, "C: wrong address is NACKed", C_SCOPE);
+    check_value(v_addr_nack, "C: wrong address is NACKed", C_SCOPE);
 
     -- the bus works again after the NACK
     i2c_dut_write(C_ADDR, (0 => x"22"), false, clk, c_cmd, c_rsp, v_addr_nack, v_data_nack);
     i2c_dut_read(C_ADDR, v_rd, true, clk, c_cmd, c_rsp, v_addr_nack);
-    bfm_check_value(v_rd(0), x"33", "C: read after the NACK", C_SCOPE);
+    check_value(v_rd(0), x"33", "C: read after the NACK", C_SCOPE);
 
     -- a command with both read and write set is a read, and it must not
     -- report a NACK of the master's own acknowledge bit
     i2c_dut_write(C_ADDR, (0 => x"22"), false, clk, c_cmd, c_rsp, v_addr_nack, v_data_nack);
     i2c_dut_byte(clk, c_cmd, c_rsp, '1', '0', '0', '1', '0', C_ADDR & '1', v_byte, v_nack);
     i2c_dut_byte(clk, c_cmd, c_rsp, '0', '1', '1', '1', '1', x"00", v_byte, v_nack);
-    bfm_check_value(v_byte, x"33", "C: read wins over write", C_SCOPE);
-    bfm_check_value(v_nack, '0', "C: no NACK reported for a read", C_SCOPE);
+    check_value(v_byte, x"33", "C: read wins over write", C_SCOPE);
+    check_value(v_nack, '0', "C: no NACK reported for a read", C_SCOPE);
 
     wait for 1 us;
-    bfm_check(c_starts = 8, "C: slave saw 8 START conditions, got " & integer'image(c_starts), C_SCOPE);
-    bfm_check(c_stops = 5, "C: slave saw 5 STOP conditions, got " & integer'image(c_stops), C_SCOPE);
+    check_value(c_starts = 8, "C: slave saw 8 START conditions, got " & integer'image(c_starts), C_SCOPE);
+    check_value(c_stops = 5, "C: slave saw 5 STOP conditions, got " & integer'image(c_stops), C_SCOPE);
     done(3) <= '1';
     wait;
   end process p_c_master;
@@ -578,14 +578,14 @@ begin
   begin
     wait until done = (done'range => '1') for 3 ms;
     if done /= (done'range => '1') then
-      bfm_alert(ERROR, "timeout, blocks not finished: " & to_string(done), C_SCOPE);
+      alert(ERROR, "timeout, blocks not finished: " & to_string(done), C_SCOPE);
     end if;
     wait for 500 ns;
-    bfm_check(a_max_low >= C_CFG_STRETCH.stretch, "A: SCL was held low at least " & time'image(C_CFG_STRETCH.stretch)
+    check_value(a_max_low >= C_CFG_STRETCH.stretch, "A: SCL was held low at least " & time'image(C_CFG_STRETCH.stretch)
               & ", longest " & time'image(a_max_low), C_SCOPE);
-    bfm_check(d_max_low >= C_CFG_STRETCH.stretch, "D: SCL was held low at least " & time'image(C_CFG_STRETCH.stretch)
+    check_value(d_max_low >= C_CFG_STRETCH.stretch, "D: SCL was held low at least " & time'image(C_CFG_STRETCH.stretch)
               & ", longest " & time'image(d_max_low), C_SCOPE);
-    bfm_report_final(C_SCOPE);
+    report_final(C_SCOPE);
     stop <= true;
     wait;
   end process p_verdict;

@@ -1,7 +1,7 @@
 {{!BFM: UART transmit / receive / expect, 5-8 data bits, parity, 1-2 stop bits, error injection}}
 {{>header.vhd}}
 
--- Usage (in a testbench, needs bfm_util_pkg):
+-- Usage (in a testbench, needs tb_util_pkg):
 --   constant C_UART : t_uart_bfm_config := (bit_period => 8680 ns, data_bits => 8,
 --     parity => PARITY_NONE, stop_bits => 1, inject_parity_error => false,
 --     inject_frame_error => false, timeout => 1 ms);
@@ -18,7 +18,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 
 package {{pkg|$file}} is
 
@@ -44,7 +44,7 @@ package {{pkg|$file}} is
     constant data   : in  std_logic_vector(7 downto 0);
     constant msg    : in  string;
     signal   tx     : out std_logic;
-    constant scope  : in  string            := C_BFM_SCOPE;
+    constant scope  : in  string            := C_TB_SCOPE_DEFAULT;
     constant config : in  t_uart_bfm_config := C_UART_BFM_CONFIG_DEFAULT);
 
   procedure uart_receive (
@@ -53,7 +53,7 @@ package {{pkg|$file}} is
     variable parity_err : out boolean;
     constant msg        : in  string;
     signal   rx         : in  std_logic;
-    constant scope      : in  string            := C_BFM_SCOPE;
+    constant scope      : in  string            := C_TB_SCOPE_DEFAULT;
     constant config     : in  t_uart_bfm_config := C_UART_BFM_CONFIG_DEFAULT);
 
   procedure uart_expect (
@@ -62,7 +62,7 @@ package {{pkg|$file}} is
     signal   rx             : in  std_logic;
     constant exp_frame_err  : in  boolean           := false;
     constant exp_parity_err : in  boolean           := false;
-    constant scope          : in  string            := C_BFM_SCOPE;
+    constant scope          : in  string            := C_TB_SCOPE_DEFAULT;
     constant config         : in  t_uart_bfm_config := C_UART_BFM_CONFIG_DEFAULT);
 
 end package {{pkg}};
@@ -73,11 +73,11 @@ package body {{pkg}} is
     constant data   : in  std_logic_vector(7 downto 0);
     constant msg    : in  string;
     signal   tx     : out std_logic;
-    constant scope  : in  string            := C_BFM_SCOPE;
+    constant scope  : in  string            := C_TB_SCOPE_DEFAULT;
     constant config : in  t_uart_bfm_config := C_UART_BFM_CONFIG_DEFAULT) is
     variable v_par : std_logic;
   begin
-    bfm_log(C_LOG_BFM, "uart_transmit: " & msg & " 0x" & to_hstring(data), scope);
+    log(C_LOG_BFM, "uart_transmit: " & msg & " 0x" & to_hstring(data), scope);
     tx <= '0';                                   -- start bit
     wait for config.bit_period;
     for i in 0 to config.data_bits - 1 loop      -- LSB first
@@ -112,7 +112,7 @@ package body {{pkg}} is
     variable parity_err : out boolean;
     constant msg        : in  string;
     signal   rx         : in  std_logic;
-    constant scope      : in  string            := C_BFM_SCOPE;
+    constant scope      : in  string            := C_TB_SCOPE_DEFAULT;
     constant config     : in  t_uart_bfm_config := C_UART_BFM_CONFIG_DEFAULT) is
     variable v_data : std_logic_vector(7 downto 0) := (others => '0');
     variable v_par  : std_logic;
@@ -123,13 +123,13 @@ package body {{pkg}} is
     if rx /= '0' then
       wait until rx = '0' for config.timeout;
       if rx /= '0' then
-        bfm_alert(ERROR, "uart_receive: timeout waiting for a start bit (" & msg & ")", scope);
+        alert(ERROR, "uart_receive: timeout waiting for a start bit (" & msg & ")", scope);
         return;
       end if;
     end if;
     wait for config.bit_period / 2;              -- middle of the start bit
     if rx /= '0' then
-      bfm_alert(ERROR, "uart_receive: start bit glitch (" & msg & ")", scope);
+      alert(ERROR, "uart_receive: start bit glitch (" & msg & ")", scope);
       return;
     end if;
     for i in 0 to config.data_bits - 1 loop
@@ -154,7 +154,7 @@ package body {{pkg}} is
       wait until rx = '1' for config.bit_period * 12;
     end if;
     data := v_data;
-    bfm_log(C_LOG_BFM, "uart_receive: " & msg & " 0x" & to_hstring(v_data), scope);
+    log(C_LOG_BFM, "uart_receive: " & msg & " 0x" & to_hstring(v_data), scope);
   end procedure uart_receive;
 
   procedure uart_expect (
@@ -163,7 +163,7 @@ package body {{pkg}} is
     signal   rx             : in  std_logic;
     constant exp_frame_err  : in  boolean           := false;
     constant exp_parity_err : in  boolean           := false;
-    constant scope          : in  string            := C_BFM_SCOPE;
+    constant scope          : in  string            := C_TB_SCOPE_DEFAULT;
     constant config         : in  t_uart_bfm_config := C_UART_BFM_CONFIG_DEFAULT) is
     variable v_data : std_logic_vector(7 downto 0);
     variable v_frm  : boolean;
@@ -173,9 +173,9 @@ package body {{pkg}} is
     uart_receive(v_data, v_frm, v_par, msg, rx, scope, config);
     -- Only the configured number of data bits is compared.
     v_mask(config.data_bits - 1 downto 0) := (others => '1');
-    bfm_check_value(v_data and v_mask, exp_data and v_mask, "uart_expect " & msg, scope);
-    bfm_check(v_frm = exp_frame_err, "uart_expect " & msg & ": framing error flag", scope);
-    bfm_check(v_par = exp_parity_err, "uart_expect " & msg & ": parity error flag", scope);
+    check_value(v_data and v_mask, exp_data and v_mask, "uart_expect " & msg, scope);
+    check_value(v_frm = exp_frame_err, "uart_expect " & msg & ": framing error flag", scope);
+    check_value(v_par = exp_parity_err, "uart_expect " & msg & ": parity error flag", scope);
   end procedure uart_expect;
 
 end package body {{pkg}};

@@ -97,7 +97,7 @@
                   "fifo_async" "pwm" "lfsr" "shift_reg" "rom_lut" "mac_dsp"
                   "uart_tx" "uart_rx" "spi_master" "axis_skid"
                   "axi_lite_regs" "project_mk" "vivado_build"
-                  "bus_sync_handshake" "avalon_mm_regs" "bfm_util_pkg"
+                  "bus_sync_handshake" "avalon_mm_regs" "tb_util_pkg" "sb_pkg"
                   "bfm_axis_pkg" "bfm_avalon_st_pkg" "bfm_axilite_pkg"
                   "bfm_avalon_mm_pkg" "bfm_uart_pkg" "bfm_spi_pkg"
                   "testbench_bfm" "spi_slave" "i2c_master" "i2c_slave"
@@ -105,7 +105,7 @@
                   "doc_icd" "doc_srs" "doc_hdd" "doc_vplan" "doc_test_report"
                   "doc_rtm" "doc_adr" "doc_review" "doc_release"))
     (should (assoc name (vhdl-tpl--list 'templates))))
-  (should (>= (length (vhdl-tpl--list 'snippets)) 16)))
+  (should (>= (length (vhdl-tpl--list 'snippets)) 17)))
 
 (ert-deftest vhdl-tpl-test-everything-has-a-description ()
   (dolist (kind '(templates snippets))
@@ -346,6 +346,13 @@
 (defun vhdl-tpl-test--slurp (file)
   (with-temp-buffer (insert-file-contents file) (buffer-string)))
 
+(defun vhdl-tpl-test--compile-order (dir)
+  "The file names listed in DIR/.compile_order, comments dropped."
+  (cl-remove-if (lambda (l) (or (string-empty-p l) (string-prefix-p "#" l)))
+                (split-string (vhdl-tpl-test--slurp
+                               (expand-file-name ".compile_order" dir))
+                              "\n")))
+
 (defun vhdl-tpl-test--new-block (name dir)
   "Run `vhdl-tpl-new-block' without prompts and close the buffer it opens."
   (vhdl-tpl-test--with-defaults
@@ -368,6 +375,14 @@
       (should (string-match-p "signal r, rin : reg_type := REG_RESET;" rtl))
       (should (string-match-p "^entity tb_blk is" tb))
       (should (string-match-p "entity work\\.blk$" tb))
+      (should (string-match-p "^use work\\.tb_util_pkg\\.all;" tb))
+      (should (string-match-p "^package tb_util_pkg is"
+                              (vhdl-tpl-test--slurp
+                               (expand-file-name "tb/tb_util_pkg.vhd" dir))))
+      (should (equal (vhdl-tpl-test--compile-order (expand-file-name "src" dir))
+                     '("blk_pkg.vhd" "blk.vhd")))
+      (should (equal (vhdl-tpl-test--compile-order (expand-file-name "tb" dir))
+                     '("tb_util_pkg.vhd" "tb_blk.vhd")))
       (should (string-match-p "^GHDL_TOP  := tb_blk$" mk))
       (should (string-match-p "^TESTS     := tb_blk$" mk))
       (should (string-match-p "^PROJECT_NAME := " mk))
@@ -397,5 +412,29 @@
     (should-not (vhdl-tpl--add-test-case mk "tb_blk"))
     (should (equal (vhdl-tpl-test--slurp mk) "TESTS := tb_old\nTESTS += tb_blk\n"))
     (should (equal (vhdl-tpl-test--slurp makefile) "# mine\n"))))
+
+(ert-deftest vhdl-tpl-test-new-block-keeps-the-project-tb-util-and-order ()
+  (let* ((dir (make-temp-file "vhdl-tpl" t))
+         (util (expand-file-name "tb/tb_util_pkg.vhd" dir))
+         (order (expand-file-name "tb/.compile_order" dir)))
+    (make-directory (file-name-directory util) t)
+    (with-temp-file util (insert "-- the project's own\n"))
+    (with-temp-file order (insert "# mine\ntb_util_pkg.vhd\ntb_old.vhd\n"))
+    (vhdl-tpl-test--new-block "blk" dir)
+    (should (equal (vhdl-tpl-test--slurp util) "-- the project's own\n"))
+    (should (equal (vhdl-tpl-test--slurp order)
+                   "# mine\ntb_util_pkg.vhd\ntb_old.vhd\ntb_blk.vhd\n"))
+    ;; A second block changes nothing but its own line.
+    (vhdl-tpl-test--new-block "two" dir)
+    (should (equal (vhdl-tpl-test--compile-order (expand-file-name "tb" dir))
+                   '("tb_util_pkg.vhd" "tb_old.vhd" "tb_blk.vhd" "tb_two.vhd")))))
+
+(ert-deftest vhdl-tpl-test-compile-order-puts-the-package-first ()
+  (let* ((dir (make-temp-file "vhdl-tpl" t))
+         (order (expand-file-name ".compile_order" dir)))
+    (with-temp-file order (insert "tb_old.vhd\n"))
+    (vhdl-tpl--update-compile-order dir '("tb_util_pkg.vhd") '("tb_new.vhd"))
+    (should (equal (vhdl-tpl-test--compile-order dir)
+                   '("tb_util_pkg.vhd" "tb_old.vhd" "tb_new.vhd")))))
 
 ;;; vhdl-tpl-test.el ends here

@@ -3,11 +3,13 @@
 VHDL and FPGA file templates for Emacs. It uses only what ships with Emacs
 (`auto-insert`, `completing-read`, `vhdl-mode`), with no packages to install.
 
-- Open a new `foo.vhd` and pick a template from a list of 55, the things an
+- Open a new `foo.vhd` and pick a template from a list of 56, the things an
   FPGA engineer keeps re-writing: entity, testbench, FSM, CDC synchronizers
   (including a handshake bus synchronizer and an async FIFO), UART, SPI,
-  AXI-Lite, AXI-Stream and Avalon blocks, bus functional models (BFMs) to
-  drive and check them, top level, GHDL and Vivado scripts, constraints.
+  AXI-Lite, AXI-Stream and Avalon blocks, a UVVM-style testbench package
+  (clock generator, pulses, `check_value`, `await_value`, alert counting,
+  scoreboard) and bus functional models (BFMs) on top of it, top level,
+  GHDL and Vivado scripts, constraints.
 - Write the documents around a block as Org files from the same chooser:
   interface control document (ICD) with register side effects, requirements,
   design description, verification plan, test report, traceability matrix,
@@ -91,7 +93,10 @@ project.mk            mk build framework settings (only if there is none)
 Makefile              include mk/Makefile (only if there is none)
 src/<name>_pkg.vhd    port records, one in and one out
 src/<name>.vhd        two-process skeleton with an empty comb process
+tb/tb_util_pkg.vhd    the testbench package (only if there is none)
 tb/tb_<name>.vhd      testbench with TC-01 and TC-02, ends with TEST PASSED
+src/.compile_order    the package before the block (new lines only)
+tb/.compile_order     tb_util_pkg first, the testbench last
 ```
 
 An existing `project.mk` gets `TESTS += tb_<name>` instead. Nothing is ever
@@ -107,7 +112,7 @@ Then the loop:
 
 | Step     | Do                                                     | Expect |
 |----------|--------------------------------------------------------|--------|
-| RED      | `make test TEST_CHECK=0 GHDL_TEST_FLAGS=--assert-level=failure` | `TC-02 ... FAILED` in `build/test/tb_<name>.log`; the summary says SKIPPED |
+| RED      | `make test TEST_CHECK=0`                               | `error: [TC-02] CHECK FAILED: busy` in `build/test/tb_<name>.log`; the summary says SKIPPED |
 | GREEN    | add the `comb` lines one test case needs, `make test`  | `[TEST] PASSED` |
 | Next     | `C-c t s tc` in the testbench                          | a new numbered test case that fails until you write its check |
 | Refactor | change `comb` and `reg_type`, testbench untouched, `make test` | still `[TEST] PASSED` |
@@ -151,7 +156,7 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 | `entity_arch`     | Entity and RTL architecture: generic width, clocked process, sync reset |
 | `two_process_pkg`, `two_process` | Gaisler two-process style: port records and component package, then `comb` and `regs` processes with a `reg_type` record, `REG_RESET` as reset and initial value, outputs driven from register fields |
 | `two_process_skeleton` | The same structure with an empty `comb` process: the RED stub for test-first design (used by `C-c t b`) |
-| `two_process_tb` | Test-first testbench for a two-process block: port records, numbered test cases, inputs driven after the rising edge and outputs checked on the falling edge, `TEST PASSED` for `make test` |
+| `two_process_tb` | Test-first testbench for a two-process block on `tb_util_pkg`: port records, `tc_start` per test case, inputs driven after the rising edge and outputs checked on the falling edge, `TEST PASSED` for `make test` |
 | `package`         | Package and body: constants, types, `clog2` |
 | `fsm`             | State register, next-state process, Moore outputs, recovery from illegal states |
 | `counter`         | Modulo-N counter with enable and wrap strobe |
@@ -194,11 +199,17 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 | `axi_lite_regs`   | AXI4-Lite slave with a register map (CONTROL, STATUS, SCRATCH, VERSION), byte strobes, SLVERR on read-only writes |
 | `avalon_mm_regs`  | Avalon-MM slave with the same register map, byteenable, one wait state per access, `readdatavalid` |
 
+**Testbench packages** (see [below](#testbench-utilities))
+
+| Template            | Contents |
+|---------------------|----------|
+| `tb_util_pkg`       | UVVM-style utilities: `clock_generator` with duty cycle and enable, `gen_pulse`, `check_value` on every common type, `check_stable`, `await_value` / `await_change` / `await_stable` with timeouts, `tc_start`, `log` with verbosity, counted alerts with expected counts and stop limits, `random`, `report_final`; used by all BFMs |
+| `sb_pkg`            | Generic scoreboard (VHDL-2008 generic package): queue of expected values per instance, `check_received` against the oldest, `check_empty` |
+
 **Bus functional models** (VHDL packages, see [below](#bus-functional-models))
 
 | Template            | Contents |
 |---------------------|----------|
-| `bfm_util_pkg`      | Log, alert counters, `bfm_check_value`, final report; used by all BFMs |
 | `bfm_axis_pkg`      | AXI4-Stream master and slave: packets, `tlast`, source gaps, sink back-pressure |
 | `bfm_avalon_st_pkg` | Avalon-ST source and sink: packets, `startofpacket` / `endofpacket`, gaps, back-pressure |
 | `bfm_axilite_pkg`   | AXI4-Lite master: write, read, check; byte strobes, response check, delayed `bready` / `rready` |
@@ -211,7 +222,7 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 
 | Template          | Contents |
 |-------------------|----------|
-| `testbench`       | Self-checking testbench: clock that stops itself, reset, `check` and `tick` helpers, `TEST PASSED` / `severity failure` |
+| `testbench`       | Self-checking testbench on `tb_util_pkg`: `clock_generator`, reset by `gen_pulse`, numbered test cases, watchdog, `report_final` |
 | `testbench_bfm`   | Testbench built on the BFMs for an AXI-Stream DUT: numbered test cases, source BFM in the sequencer, sink BFM in a checker process, final report |
 | `project_mk`      | `project.mk` for the [mk build framework](https://github.com/Pcsf/makefile_project_template): `src/` + `tb/`, `make test` verdict on `TEST PASSED`, time limit, GHW waveforms |
 | `vivado_build`    | Vivado non-project batch script: synth, place, route, reports, stops before the bitstream if setup timing fails |
@@ -245,7 +256,8 @@ under test.
 `libs`, `process_clk`, `process_comb`, `case`, `enum_state`, `record`,
 `slv_array`, `generate_for`, `generate_if`, `inst_entity`, `function`,
 `clog2`, `assert_check`, `attr_debug` (Vivado `mark_debug`), `tristate`,
-`tc` (a numbered test case that fails until you write its check).
+`check_value` and `tc` (a numbered test case on `tb_util_pkg` that fails
+until you write its check).
 
 ## System engineering documents
 
@@ -282,30 +294,114 @@ The Org header (`#+AUTHOR`, `#+DATE`, `#+OPTIONS` with `^:nil` so that
 `uart_tx` is not a subscript) is `partials/header.org`; override it from
 your own directory to add a company or classification line.
 
+## Testbench utilities
+
+`tb_util_pkg` is one VHDL-2008 file that gives a testbench what UVVM's
+`uvvm_util` gives it, without a library to build: create it once per project
+with `C-c t n` (`C-c t b` does it for you), analyse it first, and every
+testbench and BFM uses it. The names are UVVM's, so moving to UVVM later is
+mostly a matter of `use` clauses; the one difference is that UVVM's
+`check_value` takes the alert level before the message.
+
+```vhdl
+use work.tb_util_pkg.all;
+...
+constant C_SCOPE : string := "uart_tx_tb";
+signal clk : std_logic := '0';
+signal rst : std_logic := '0';
+...
+p_clk : process begin clock_generator(clk, 10 ns, 50); end process;
+
+p_main : process
+begin
+  gen_pulse(rst, '1', clk, 4, "reset", C_SCOPE);        -- high for 4 clocks
+  tc_start("TC-01", "a byte goes out LSB first", C_SCOPE);
+  ...
+  check_value(txd, '0', "start bit", C_SCOPE);
+  await_value(busy, '0', 80 us, 100 us, "frame done", C_SCOPE);
+  check_stable(txd, 8 us, "stop bit", C_SCOPE);
+
+  tc_start("TC-02", "a write while busy is refused", C_SCOPE);
+  increment_expected_alerts(ERROR, 1);                   -- the BFM will report one
+  ...
+  report_final(C_SCOPE);                                 -- TEST PASSED, or a failure
+  std.env.stop;
+end process;
+```
+
+What it does:
+
+- **Clocks and pulses.** `clock_generator(clk, period, duty_cycle_pct)` runs
+  forever in a process of its own; a second form takes an `ena` signal that
+  stops the clock low. `gen_pulse` drives a `std_logic` or a vector for a
+  time or a number of rising edges and restores the previous value.
+  `wait_num_rising_edges`, `wait_num_falling_edges`.
+- **Checks.** `check_value(actual, expected, msg)` for `std_logic`,
+  `std_logic_vector`, `unsigned`, `signed`, `integer`, `boolean`, `time`
+  and `string`, plus `check_value(condition, msg)`; `check_value_in_range`;
+  `check_stable(signal, time, msg)`.
+- **Waiting with a verdict.** `await_value(signal, expected, min, max, msg)`,
+  `await_change`, `await_stable(signal, stable_for, timeout, msg)`: each
+  waits, then reports a timeout, a too-early arrival, or a log line.
+- **Alerts are counted, not fatal.** A failed check prints an `error:` line
+  and the run goes on, so one run shows every failure. `report_final` prints
+  the totals per level and `TEST PASSED` when each level has exactly the
+  number of alerts announced with `increment_expected_alerts`; otherwise it
+  prints `TEST FAILED` and stops with `severity failure`, so `ghdl -r` exits
+  non-zero. `set_alert_stop_limit(ERROR, 1)` stops at the first error
+  instead. A `FAILURE` alert always stops.
+- **Test cases.** `tc_start("TC-03", "what it checks")` prints a header and
+  tags every alert with `[TC-03]`; the final report lists the test cases
+  that raised one.
+- **Output.** Every line is `<time> <scope>: <message>` on the simulator's
+  output, with no file and line noise. `set_log_verbosity(C_LOG_BFM)` also
+  prints every passing check and BFM transaction; `log(C_LOG_HDR, ...)`
+  for your own lines.
+- **Random.** `set_random_seed`, `random(min, max)`, `random(length)`.
+
+`sb_pkg` is a generic scoreboard for when the checker is not the process
+that knows the expected values: one instance per stream, `add_expected` in
+the sequencer, `check_received` where the data comes out, `check_empty`
+before the final report. It is a VHDL-2008 generic package, which GHDL and
+Questa take; it is a separate file so a simulator without that support
+can leave it out.
+
+```vhdl
+package sb_byte_pkg is new work.sb_pkg
+  generic map (t_element => std_logic_vector(7 downto 0));
+use sb_byte_pkg.all;
+...
+shared variable sb : t_scoreboard;
+```
+
+With the mk build framework nothing else is needed: the package is a file in
+`tb/`, listed first in `tb/.compile_order`, and `make test` reads `TEST PASSED`
+from the transcript. There is no compile script and no library name.
+
 ## Bus functional models
 
 The `bfm_*_pkg` templates are VHDL packages that drive and check a bus from a
 testbench, so a test reads as a list of transactions instead of wiggling
-signals. They need no UVVM: `bfm_util_pkg` supplies a small log / alert /
-`check_value` / final-report layer in the same style (config records, scope
-strings), so moving a testbench to UVVM's `bitvis_vip_*` later is mostly a
-rename. Use `C-c t n` to create `bfm_util_pkg.vhd` and the BFMs you need, in
-your `tb/` directory, and compile `bfm_util_pkg` first.
+signals. They need no UVVM: they log, check and count through `tb_util_pkg`
+in the same style (config records, scope strings), so moving a testbench to
+UVVM's `bitvis_vip_*` later is mostly a rename. Use `C-c t n` to create
+`tb_util_pkg.vhd` and the BFMs you need, in your `tb/` directory, and
+compile `tb_util_pkg` first.
 
 ```vhdl
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 use work.bfm_axilite_pkg.all;
 ...
 signal axi_m2s : t_axilite_m2s := C_AXILITE_M2S_INIT;   -- BFM drives
 signal axi_s2m : t_axilite_s2m;                         -- DUT drives
 ...
-bfm_log(C_LOG_HDR, "TC-01: CONTROL reads back what was written", C_SCOPE);
+tc_start("TC-01", "CONTROL reads back what was written", C_SCOPE);
 axilite_write(x"00000000", x"DEADBEEF", "CONTROL", clk, axi_m2s, axi_s2m);
 axilite_check(x"00000000", x"DEADBEEF", "CONTROL", clk, axi_m2s, axi_s2m);
 axilite_write(x"00000004", x"00000001", "STATUS is read-only", clk, axi_m2s, axi_s2m,
               exp_resp => C_AXI_RESP_SLVERR);
 ...
-bfm_report_final(C_SCOPE);        -- "TEST PASSED", or a failure that stops GHDL
+report_final(C_SCOPE);            -- "TEST PASSED", or a failure that stops GHDL
 ```
 
 How they work, common to all of them:
@@ -321,7 +417,7 @@ How they work, common to all of them:
 - **A config record per BFM** holds the knobs: timeouts, source gaps, sink
   back-pressure, delayed `bready` / `rready`, UART frame format, SPI mode.
 - **Errors are counted, not fatal.** A timeout or mismatch raises an alert
-  and the test continues; `bfm_report_final` prints `TEST PASSED` or stops the
+  and the test continues; `report_final` prints `TEST PASSED` or stops the
   simulation with `severity failure`.
 - **What is not modelled:** AXI-Stream `tkeep` / `tstrb` / `tid` / `tdest` /
   `tuser`, Avalon-ST `empty` / `channel` / `error`, pipelined or burst
@@ -392,7 +488,7 @@ Single braces such as `{ PACKAGE_PIN ... }` in XDC files are literal.
 
 ```sh
 mkdir -p work
-ghdl -a --std=08 --workdir=work entity_arch.vhd entity_arch_tb.vhd
+ghdl -a --std=08 --workdir=work tb_util_pkg.vhd entity_arch.vhd entity_arch_tb.vhd
 ghdl -e --std=08 --workdir=work entity_arch_tb
 ghdl -r --std=08 --workdir=work entity_arch_tb --wave=tb.ghw   # then: gtkwave tb.ghw
 ```
@@ -401,8 +497,9 @@ For a whole project use the mk build framework: `C-c t b` writes its
 `project.mk`, or start one from the `project_mk` template. See
 [Two-process blocks, test first](#two-process-blocks-test-first).
 
-The testbench template prints `TEST PASSED`. On a failed check it stops with
-`severity failure`, so `ghdl -r` exits non-zero and works in CI.
+The testbenches print `TEST PASSED`. After a failed check they go on, and
+`report_final` stops with `severity failure`, so `ghdl -r` exits non-zero
+and works in CI.
 
 ## Tests
 
@@ -415,10 +512,19 @@ make tdd      # C-c t b bundle on the mk framework: RED on the skeleton,
 make check    # all three
 ```
 
-`make sim` runs six testbenches:
+`make sim` runs nine testbenches, plus four runs that must fail:
 
 - `entity_arch_tb`: the rendered `testbench` template against `entity_arch`.
+- `two_process_tb`: the rendered `two_process_tb` template against `two_process`.
 - `axis_skid_tb`: the rendered `testbench_bfm` template against `axis_skid`.
+- `test/tb_util.vhd`: `tb_util_pkg` and `sb_pkg` themselves: a 25 % clock
+  and a clock with enable, `gen_pulse` timing, every `await_*` against a
+  side process with known edge times, `check_stable`, planted errors and
+  warnings announced with `increment_expected_alerts`, `random`, and the
+  scoreboard with a planted mismatch and an unexpected value.
+- `test/tb_util_fail.vhd`, four times: an unexpected error, the alert stop
+  limit, a `FAILURE` alert, an unexpected warning. Each must exit non-zero,
+  print `TEST FAILED` and never reach the line after the stop.
 - `test/tb_bfm.vhd`: every BFM against a design or model it did not write.
   AXI-Stream and Avalon-ST through `axis_skid` (gaps, back-pressure,
   single-beat packets), AXI4-Lite against `axi_lite_regs`, Avalon-MM against
@@ -480,6 +586,6 @@ vhdl-tpl.el     the whole engine (one file)
 templates/      whole-file templates (VHDL, constraints, scripts, Org documents)
 snippets/       fragments
 partials/       shared pieces (file headers, Org keywords)
-test/           ERT tests, render script, functional testbench
+test/           ERT tests, render script, functional testbenches
 Makefile        make check
 ```

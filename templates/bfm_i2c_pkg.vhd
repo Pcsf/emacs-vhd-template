@@ -1,7 +1,7 @@
 {{!BFM: I2C master and slave (transmit, receive, check), clock stretching, address NACK, repeated START}}
 {{>header.vhd}}
 
--- Usage (in a testbench, needs bfm_util_pkg).  The bus is two std_logic
+-- Usage (in a testbench, needs tb_util_pkg).  The bus is two std_logic
 -- signals with a weak pull-up; every device drives '0' or 'Z':
 --   signal scl, sda : std_logic := 'Z';
 --   scl <= 'H';   sda <= 'H';                       -- the pull-ups
@@ -26,7 +26,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 
 package {{pkg|$file}} is
 
@@ -53,7 +53,7 @@ package {{pkg|$file}} is
     constant addr_ack_expected   : in    boolean := true;
     constant send_start          : in    boolean := true;
     constant send_stop           : in    boolean := true;
-    constant scope               : in    string  := C_BFM_SCOPE;
+    constant scope               : in    string  := C_TB_SCOPE_DEFAULT;
     constant config              : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT);
 
   -- Master: START, address + read, reads data'length bytes (NACK on the last), STOP.
@@ -65,7 +65,7 @@ package {{pkg|$file}} is
     signal   sda        : inout std_logic;
     constant send_start : in    boolean := true;
     constant send_stop  : in    boolean := true;
-    constant scope      : in    string  := C_BFM_SCOPE;
+    constant scope      : in    string  := C_TB_SCOPE_DEFAULT;
     constant config     : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT);
 
   procedure i2c_master_check (
@@ -76,7 +76,7 @@ package {{pkg|$file}} is
     signal   sda        : inout std_logic;
     constant send_start : in    boolean := true;
     constant send_stop  : in    boolean := true;
-    constant scope      : in    string  := C_BFM_SCOPE;
+    constant scope      : in    string  := C_TB_SCOPE_DEFAULT;
     constant config     : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT);
 
   -- Slave: waits for START, address with write, receives data'length bytes.
@@ -86,7 +86,7 @@ package {{pkg|$file}} is
     constant msg    : in    string;
     signal   scl    : inout std_logic;
     signal   sda    : inout std_logic;
-    constant scope  : in    string  := C_BFM_SCOPE;
+    constant scope  : in    string  := C_TB_SCOPE_DEFAULT;
     constant config : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT);
 
   procedure i2c_slave_check (
@@ -95,7 +95,7 @@ package {{pkg|$file}} is
     constant msg      : in    string;
     signal   scl      : inout std_logic;
     signal   sda      : inout std_logic;
-    constant scope    : in    string  := C_BFM_SCOPE;
+    constant scope    : in    string  := C_TB_SCOPE_DEFAULT;
     constant config   : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT);
 
   -- Slave: waits for START, address with read, sends the bytes; returns
@@ -106,7 +106,7 @@ package {{pkg|$file}} is
     constant msg    : in    string;
     signal   scl    : inout std_logic;
     signal   sda    : inout std_logic;
-    constant scope  : in    string  := C_BFM_SCOPE;
+    constant scope  : in    string  := C_TB_SCOPE_DEFAULT;
     constant config : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT);
 
 end package {{pkg}};
@@ -127,7 +127,7 @@ package body {{pkg}} is
     if to_x01(scl) /= '1' then
       wait until to_x01(scl) = '1' for timeout;
       if to_x01(scl) /= '1' then
-        bfm_alert(ERROR, "i2c: SCL stuck low", scope);
+        alert(ERROR, "i2c: SCL stuck low", scope);
       end if;
     end if;
   end procedure release_scl;
@@ -245,23 +245,23 @@ package body {{pkg}} is
     constant addr_ack_expected   : in    boolean := true;
     constant send_start          : in    boolean := true;
     constant send_stop           : in    boolean := true;
-    constant scope               : in    string  := C_BFM_SCOPE;
+    constant scope               : in    string  := C_TB_SCOPE_DEFAULT;
     constant config              : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT) is
     constant q      : time := config.scl_period / 4;
     variable v_ack  : std_logic;
     variable v_byte : std_logic_vector(7 downto 0);
   begin
     if data'length > 0 and data(data'low)'length /= 8 then
-      bfm_alert(FAILURE, "i2c_master_transmit: data must be bytes", scope);
+      alert(FAILURE, "i2c_master_transmit: data must be bytes", scope);
     end if;
-    bfm_log(C_LOG_BFM, "i2c_master_transmit: " & msg & " addr 0x" & to_hstring('0' & addr)
+    log(C_LOG_BFM, "i2c_master_transmit: " & msg & " addr 0x" & to_hstring('0' & addr)
             & " (" & integer'image(data'length) & " bytes)", scope);
     if send_start then
       start_condition(scl, sda, q, config.timeout, scope);
     end if;
     put_byte(addr & '0', scl, sda, q, config.timeout, scope);       -- address, write
     get_bit(v_ack, scl, sda, q, config.timeout, scope);
-    bfm_check((v_ack = '0') = addr_ack_expected,
+    check_value((v_ack = '0') = addr_ack_expected,
               "i2c_master_transmit " & msg & ": address is " &
               boolean'image(addr_ack_expected) & " acknowledged", scope);
     if v_ack = '0' then
@@ -269,7 +269,7 @@ package body {{pkg}} is
         v_byte := data(n);                       -- position-based copy, whatever the bounds
         put_byte(v_byte, scl, sda, q, config.timeout, scope);
         get_bit(v_ack, scl, sda, q, config.timeout, scope);
-        bfm_check(v_ack = '0', "i2c_master_transmit " & msg & ": byte "
+        check_value(v_ack = '0', "i2c_master_transmit " & msg & ": byte "
                   & integer'image(n - data'low) & " acknowledged", scope);
       end loop;
     end if;
@@ -286,7 +286,7 @@ package body {{pkg}} is
     signal   sda        : inout std_logic;
     constant send_start : in    boolean := true;
     constant send_stop  : in    boolean := true;
-    constant scope      : in    string  := C_BFM_SCOPE;
+    constant scope      : in    string  := C_TB_SCOPE_DEFAULT;
     constant config     : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT) is
     constant q      : time := config.scl_period / 4;
     variable v_ack  : std_logic;
@@ -295,14 +295,14 @@ package body {{pkg}} is
     for n in data'low to data'high loop
       data(n) := (data(n)'range => 'X');
     end loop;
-    bfm_log(C_LOG_BFM, "i2c_master_receive: " & msg & " addr 0x" & to_hstring('0' & addr)
+    log(C_LOG_BFM, "i2c_master_receive: " & msg & " addr 0x" & to_hstring('0' & addr)
             & " (" & integer'image(data'length) & " bytes)", scope);
     if send_start then
       start_condition(scl, sda, q, config.timeout, scope);
     end if;
     put_byte(addr & '1', scl, sda, q, config.timeout, scope);       -- address, read
     get_bit(v_ack, scl, sda, q, config.timeout, scope);
-    bfm_check(v_ack = '0', "i2c_master_receive " & msg & ": address acknowledged", scope);
+    check_value(v_ack = '0', "i2c_master_receive " & msg & ": address acknowledged", scope);
     if v_ack = '0' then
       for n in data'low to data'high loop
         get_byte(v_byte, scl, sda, q, config.timeout, scope);
@@ -327,7 +327,7 @@ package body {{pkg}} is
     signal   sda        : inout std_logic;
     constant send_start : in    boolean := true;
     constant send_stop  : in    boolean := true;
-    constant scope      : in    string  := C_BFM_SCOPE;
+    constant scope      : in    string  := C_TB_SCOPE_DEFAULT;
     constant config     : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT) is
     variable v_data : t_slv_array(exp_data'range)(7 downto 0);
     variable v_exp  : std_logic_vector(7 downto 0);
@@ -335,7 +335,7 @@ package body {{pkg}} is
     i2c_master_receive(addr, v_data, msg, scl, sda, send_start, send_stop, scope, config);
     for n in exp_data'low to exp_data'high loop
       v_exp := exp_data(n);
-      bfm_check_value(v_data(n), v_exp, "i2c_master_check " & msg & " byte "
+      check_value(v_data(n), v_exp, "i2c_master_check " & msg & " byte "
                       & integer'image(n - exp_data'low), scope);
     end loop;
   end procedure i2c_master_check;
@@ -372,7 +372,7 @@ package body {{pkg}} is
   begin
     wait until rising_edge(scl) for timeout;
     if to_x01(scl) /= '1' then
-      bfm_alert(ERROR, "i2c: timeout waiting for SCL to rise", scope);
+      alert(ERROR, "i2c: timeout waiting for SCL to rise", scope);
     end if;
   end procedure wait_scl_rise;
 
@@ -383,7 +383,7 @@ package body {{pkg}} is
   begin
     wait until falling_edge(scl) for timeout;
     if to_x01(scl) /= '0' then
-      bfm_alert(ERROR, "i2c: timeout waiting for SCL to fall", scope);
+      alert(ERROR, "i2c: timeout waiting for SCL to fall", scope);
     end if;
   end procedure wait_scl_fall;
 
@@ -430,17 +430,17 @@ package body {{pkg}} is
     ok := false;
     wait_start(scl, sda, v_found, config.timeout);
     if not v_found then
-      bfm_alert(ERROR, "i2c slave " & msg & ": timeout waiting for START", scope);
+      alert(ERROR, "i2c slave " & msg & ": timeout waiting for START", scope);
       return;
     end if;
     slave_get_byte(v_byte, scl, sda, config.timeout, scope);
     wait_scl_fall(scl, config.timeout, scope);
     if v_byte(7 downto 1) /= addr then
-      bfm_alert(ERROR, "i2c slave " & msg & ": addressed 0x" & to_hstring('0' & v_byte(7 downto 1))
+      alert(ERROR, "i2c slave " & msg & ": addressed 0x" & to_hstring('0' & v_byte(7 downto 1))
                 & ", expected 0x" & to_hstring('0' & addr), scope);
       return;
     end if;
-    bfm_check((v_byte(0) = '1') = want_read, "i2c slave " & msg & ": direction bit", scope);
+    check_value((v_byte(0) = '1') = want_read, "i2c slave " & msg & ": direction bit", scope);
     if config.addr_ack then
       sda <= '0';                                -- ACK
       wait_scl_rise(scl, config.timeout, scope);
@@ -463,7 +463,7 @@ package body {{pkg}} is
     constant msg    : in    string;
     signal   scl    : inout std_logic;
     signal   sda    : inout std_logic;
-    constant scope  : in    string  := C_BFM_SCOPE;
+    constant scope  : in    string  := C_TB_SCOPE_DEFAULT;
     constant config : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT) is
     variable v_ok   : boolean;
     variable v_byte : std_logic_vector(7 downto 0);
@@ -486,7 +486,7 @@ package body {{pkg}} is
       sda <= 'Z';
       stretch_clock(scl, config);
     end loop;
-    bfm_log(C_LOG_BFM, "i2c_slave_receive: " & msg & " (" & integer'image(data'length)
+    log(C_LOG_BFM, "i2c_slave_receive: " & msg & " (" & integer'image(data'length)
             & " bytes)", scope);
   end procedure i2c_slave_receive;
 
@@ -496,7 +496,7 @@ package body {{pkg}} is
     constant msg      : in    string;
     signal   scl      : inout std_logic;
     signal   sda      : inout std_logic;
-    constant scope    : in    string  := C_BFM_SCOPE;
+    constant scope    : in    string  := C_TB_SCOPE_DEFAULT;
     constant config   : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT) is
     variable v_data : t_slv_array(exp_data'range)(7 downto 0);
     variable v_exp  : std_logic_vector(7 downto 0);
@@ -504,7 +504,7 @@ package body {{pkg}} is
     i2c_slave_receive(addr, v_data, msg, scl, sda, scope, config);
     for n in exp_data'low to exp_data'high loop
       v_exp := exp_data(n);
-      bfm_check_value(v_data(n), v_exp, "i2c_slave_check " & msg & " byte "
+      check_value(v_data(n), v_exp, "i2c_slave_check " & msg & " byte "
                       & integer'image(n - exp_data'low), scope);
     end loop;
   end procedure i2c_slave_check;
@@ -515,7 +515,7 @@ package body {{pkg}} is
     constant msg    : in    string;
     signal   scl    : inout std_logic;
     signal   sda    : inout std_logic;
-    constant scope  : in    string  := C_BFM_SCOPE;
+    constant scope  : in    string  := C_TB_SCOPE_DEFAULT;
     constant config : in    t_i2c_bfm_config := C_I2C_BFM_CONFIG_DEFAULT) is
     variable v_ok   : boolean;
     variable v_byte : std_logic_vector(7 downto 0);
@@ -545,10 +545,10 @@ package body {{pkg}} is
       v_ack := to_x01(sda);
       wait_scl_fall(scl, config.timeout, scope);
       if n = data'high then
-        bfm_log(C_LOG_BFM, "i2c_slave_transmit: " & msg & " (" & integer'image(data'length)
+        log(C_LOG_BFM, "i2c_slave_transmit: " & msg & " (" & integer'image(data'length)
                 & " bytes)", scope);
       elsif v_ack /= '0' then
-        bfm_alert(ERROR, "i2c_slave_transmit " & msg & ": master NACKed byte "
+        alert(ERROR, "i2c_slave_transmit " & msg & ": master NACKed byte "
                   & integer'image(n - data'low) & " of " & integer'image(data'length), scope);
         return;
       end if;

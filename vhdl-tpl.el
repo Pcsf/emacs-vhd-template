@@ -44,6 +44,7 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'autoinsert)
+(require 'seq)
 
 (declare-function org-table-map-tables "org-table" (function &optional quietly))
 (declare-function org-table-align "org-table" ())
@@ -383,15 +384,40 @@ variables, see `vhdl-tpl-render'."
       (write-region nil nil project-mk)
       t)))
 
+(defun vhdl-tpl--update-compile-order (dir first last)
+  "Keep DIR/.compile_order listing the files FIRST before, and LAST after, the rest.
+Both are lists of file names.  A name already in the file stays where it
+is; the file is created when there is none.  The mk framework reads it
+and never rewrites it."
+  (let* ((file (expand-file-name ".compile_order" dir))
+         (lines (if (file-exists-p file)
+                    (with-temp-buffer
+                      (insert-file-contents file)
+                      (split-string (string-trim-right (buffer-string) "\n") "\n"))
+                  (list (format "# VHDL compilation order for: %s"
+                                (file-name-nondirectory (directory-file-name dir)))
+                        "# A package or entity goes before the files that use it.")))
+         (header (seq-take-while (lambda (l) (string-prefix-p "#" l)) lines))
+         (rest (seq-drop lines (length header)))
+         (present (lambda (name) (member name lines)))
+         (new-first (cl-remove-if present first))
+         (new-last (cl-remove-if present last)))
+    (when (or new-first new-last (not (file-exists-p file)))
+      (make-directory dir t)
+      (with-temp-file file
+        (insert (string-join (append header new-first rest new-last) "\n") "\n")))))
+
 ;;;###autoload
 (defun vhdl-tpl-new-block (name root)
   "Create the two-process block NAME in project ROOT, ready for test-first work.
 Writes src/NAME_pkg.vhd (port records), src/NAME.vhd (the two-process
 skeleton with an empty comb process) and tb/tb_NAME.vhd (numbered test
-cases).  A project without project.mk also gets project.mk and a Makefile
-for the mk/ build framework; an existing project.mk gets the testbench
-added to TESTS.  Existing files are never overwritten.  As written, the
-testbench fails on the skeleton: that is the RED step."
+cases on tb_util_pkg, which is written to tb/ when the project has none).
+A project without project.mk also gets project.mk and a Makefile for the
+mk/ build framework; an existing project.mk gets the testbench added to
+TESTS.  The .compile_order of src/ and tb/ list the new files in the right
+place.  Existing files are never overwritten.  As written, the testbench
+fails on the skeleton: that is the RED step."
   (interactive
    (let ((root (read-directory-name
                 "Project root: " (vhdl-tpl--project-root default-directory))))
@@ -417,6 +443,14 @@ testbench fails on the skeleton: that is the RED step."
                                     (directory-file-name root))))))
       (dolist (f files)
         (vhdl-tpl--write (car f) (cdr f) values))
+      (let ((util (expand-file-name "tb/tb_util_pkg.vhd" root)))
+        (unless (file-exists-p util)
+          (vhdl-tpl--write "tb_util_pkg" util values)))
+      (vhdl-tpl--update-compile-order
+       (expand-file-name "src" root) nil
+       (list (format "%s_pkg.vhd" name) (format "%s.vhd" name)))
+      (vhdl-tpl--update-compile-order
+       (expand-file-name "tb" root) '("tb_util_pkg.vhd") (list (format "%s.vhd" tb)))
       (if new-project
           (vhdl-tpl--write "project_mk" project-mk values)
         (vhdl-tpl--add-test-case project-mk tb))

@@ -1,7 +1,7 @@
 {{!BFM: AXI4-Stream master (transmit packets) and slave (receive, expect), with gaps and back-pressure}}
 {{>header.vhd}}
 
--- Usage (in a testbench, needs bfm_util_pkg):
+-- Usage (in a testbench, needs tb_util_pkg):
 --   signal src_m2s : t_axis_m2s := C_AXIS_M2S_INIT;   -- BFM -> DUT
 --   signal src_s2m : t_axis_s2m := C_AXIS_S2M_INIT;   -- DUT -> BFM
 --   ...
@@ -16,7 +16,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 
 package {{pkg|$file}} is
 
@@ -52,7 +52,7 @@ package {{pkg|$file}} is
     signal   clk    : in  std_logic;
     signal   m2s    : out t_axis_m2s;
     signal   s2m    : in  t_axis_s2m;
-    constant scope  : in  string            := C_BFM_SCOPE;
+    constant scope  : in  string            := C_TB_SCOPE_DEFAULT;
     constant config : in  t_axis_bfm_config := C_AXIS_BFM_CONFIG_DEFAULT);
 
   -- Slave: accept one beat.
@@ -63,7 +63,7 @@ package {{pkg|$file}} is
     signal   clk    : in  std_logic;
     signal   m2s    : in  t_axis_m2s;
     signal   s2m    : out t_axis_s2m;
-    constant scope  : in  string            := C_BFM_SCOPE;
+    constant scope  : in  string            := C_TB_SCOPE_DEFAULT;
     constant config : in  t_axis_bfm_config := C_AXIS_BFM_CONFIG_DEFAULT);
 
   -- Slave: accept one packet and compare data and tlast with the expected one.
@@ -73,7 +73,7 @@ package {{pkg|$file}} is
     signal   clk      : in  std_logic;
     signal   m2s      : in  t_axis_m2s;
     signal   s2m      : out t_axis_s2m;
-    constant scope    : in  string            := C_BFM_SCOPE;
+    constant scope    : in  string            := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_axis_bfm_config := C_AXIS_BFM_CONFIG_DEFAULT);
 
 end package {{pkg}};
@@ -86,7 +86,7 @@ package body {{pkg}} is
     signal   clk    : in  std_logic;
     signal   m2s    : out t_axis_m2s;
     signal   s2m    : in  t_axis_s2m;
-    constant scope  : in  string            := C_BFM_SCOPE;
+    constant scope  : in  string            := C_TB_SCOPE_DEFAULT;
     constant config : in  t_axis_bfm_config := C_AXIS_BFM_CONFIG_DEFAULT) is
     variable v_wait : natural;
   begin
@@ -94,10 +94,10 @@ package body {{pkg}} is
       return;
     end if;
     if data(data'low)'length /= C_AXIS_DATA_WIDTH then
-      bfm_alert(FAILURE, "axis_transmit: data is " & integer'image(data(data'low)'length)
+      alert(FAILURE, "axis_transmit: data is " & integer'image(data(data'low)'length)
                 & " bits wide, C_AXIS_DATA_WIDTH is " & integer'image(C_AXIS_DATA_WIDTH), scope);
     end if;
-    bfm_log(C_LOG_BFM, "axis_transmit: " & msg & " (" & integer'image(data'length)
+    log(C_LOG_BFM, "axis_transmit: " & msg & " (" & integer'image(data'length)
             & " beats)", scope);
     for i in data'low to data'high loop
       if i /= data'low and config.gap_cycles > 0 then
@@ -119,7 +119,7 @@ package body {{pkg}} is
         exit when s2m.tready = '1';              -- accepted at this edge
         v_wait := v_wait + 1;
         if v_wait >= config.max_wait_cycles then
-          bfm_alert(ERROR, "axis_transmit: timeout waiting for tready (" & msg & ")", scope);
+          alert(ERROR, "axis_transmit: timeout waiting for tready (" & msg & ")", scope);
           exit;
         end if;
       end loop;
@@ -134,7 +134,7 @@ package body {{pkg}} is
     signal   clk    : in  std_logic;
     signal   m2s    : in  t_axis_m2s;
     signal   s2m    : out t_axis_s2m;
-    constant scope  : in  string            := C_BFM_SCOPE;
+    constant scope  : in  string            := C_TB_SCOPE_DEFAULT;
     constant config : in  t_axis_bfm_config := C_AXIS_BFM_CONFIG_DEFAULT) is
     variable v_wait : natural := 0;
   begin
@@ -154,7 +154,7 @@ package body {{pkg}} is
       end if;
       v_wait := v_wait + 1;
       if v_wait >= config.max_wait_cycles then
-        bfm_alert(ERROR, "axis_receive: timeout waiting for tvalid (" & msg & ")", scope);
+        alert(ERROR, "axis_receive: timeout waiting for tvalid (" & msg & ")", scope);
         exit;
       end if;
     end loop;
@@ -169,20 +169,20 @@ package body {{pkg}} is
     signal   clk      : in  std_logic;
     signal   m2s      : in  t_axis_m2s;
     signal   s2m      : out t_axis_s2m;
-    constant scope    : in  string            := C_BFM_SCOPE;
+    constant scope    : in  string            := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_axis_bfm_config := C_AXIS_BFM_CONFIG_DEFAULT) is
     variable v_data : std_logic_vector(C_AXIS_DATA_WIDTH - 1 downto 0);
     variable v_last : std_logic;
   begin
     for i in exp_data'low to exp_data'high loop
       axis_receive_beat(v_data, v_last, msg, clk, m2s, s2m, scope, config);
-      bfm_check_value(v_data, exp_data(i),
+      check_value(v_data, exp_data(i),
                       "axis_expect " & msg & " beat " & integer'image(i - exp_data'low),
                       scope);
       if i = exp_data'high then
-        bfm_check_value(v_last, '1', "axis_expect " & msg & ": tlast on the last beat", scope);
+        check_value(v_last, '1', "axis_expect " & msg & ": tlast on the last beat", scope);
       else
-        bfm_check_value(v_last, '0', "axis_expect " & msg & ": no tlast before the end", scope);
+        check_value(v_last, '0', "axis_expect " & msg & ": no tlast before the end", scope);
       end if;
     end loop;
   end procedure axis_expect;

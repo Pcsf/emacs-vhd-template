@@ -1,7 +1,7 @@
 {{!BFM: Avalon-ST source (transmit packets) and sink (receive, expect), ready latency 0}}
 {{>header.vhd}}
 
--- Usage (in a testbench, needs bfm_util_pkg):
+-- Usage (in a testbench, needs tb_util_pkg):
 --   signal src_m2s : t_avst_m2s := C_AVST_M2S_INIT;   -- source -> DUT
 --   signal src_s2m : t_avst_s2m := C_AVST_S2M_INIT;   -- DUT -> source
 --   avst_transmit(packet, "packet 1", clk, src_m2s, src_s2m);    -- source
@@ -14,7 +14,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 
-use work.bfm_util_pkg.all;
+use work.tb_util_pkg.all;
 
 package {{pkg|$file}} is
 
@@ -51,7 +51,7 @@ package {{pkg|$file}} is
     signal   clk    : in  std_logic;
     signal   m2s    : out t_avst_m2s;
     signal   s2m    : in  t_avst_s2m;
-    constant scope  : in  string            := C_BFM_SCOPE;
+    constant scope  : in  string            := C_TB_SCOPE_DEFAULT;
     constant config : in  t_avst_bfm_config := C_AVST_BFM_CONFIG_DEFAULT);
 
   procedure avst_receive_beat (
@@ -62,7 +62,7 @@ package {{pkg|$file}} is
     signal   clk    : in  std_logic;
     signal   m2s    : in  t_avst_m2s;
     signal   s2m    : out t_avst_s2m;
-    constant scope  : in  string            := C_BFM_SCOPE;
+    constant scope  : in  string            := C_TB_SCOPE_DEFAULT;
     constant config : in  t_avst_bfm_config := C_AVST_BFM_CONFIG_DEFAULT);
 
   procedure avst_expect (
@@ -71,7 +71,7 @@ package {{pkg|$file}} is
     signal   clk      : in  std_logic;
     signal   m2s      : in  t_avst_m2s;
     signal   s2m      : out t_avst_s2m;
-    constant scope    : in  string            := C_BFM_SCOPE;
+    constant scope    : in  string            := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_avst_bfm_config := C_AVST_BFM_CONFIG_DEFAULT);
 
 end package {{pkg}};
@@ -84,7 +84,7 @@ package body {{pkg}} is
     signal   clk    : in  std_logic;
     signal   m2s    : out t_avst_m2s;
     signal   s2m    : in  t_avst_s2m;
-    constant scope  : in  string            := C_BFM_SCOPE;
+    constant scope  : in  string            := C_TB_SCOPE_DEFAULT;
     constant config : in  t_avst_bfm_config := C_AVST_BFM_CONFIG_DEFAULT) is
     variable v_wait : natural;
   begin
@@ -92,10 +92,10 @@ package body {{pkg}} is
       return;
     end if;
     if data(data'low)'length /= C_AVST_DATA_WIDTH then
-      bfm_alert(FAILURE, "avst_transmit: data is " & integer'image(data(data'low)'length)
+      alert(FAILURE, "avst_transmit: data is " & integer'image(data(data'low)'length)
                 & " bits wide, C_AVST_DATA_WIDTH is " & integer'image(C_AVST_DATA_WIDTH), scope);
     end if;
-    bfm_log(C_LOG_BFM, "avst_transmit: " & msg & " (" & integer'image(data'length)
+    log(C_LOG_BFM, "avst_transmit: " & msg & " (" & integer'image(data'length)
             & " beats)", scope);
     for i in data'low to data'high loop
       if i /= data'low and config.gap_cycles > 0 then
@@ -122,7 +122,7 @@ package body {{pkg}} is
         exit when s2m.ready = '1';               -- accepted at this edge
         v_wait := v_wait + 1;
         if v_wait >= config.max_wait_cycles then
-          bfm_alert(ERROR, "avst_transmit: timeout waiting for ready (" & msg & ")", scope);
+          alert(ERROR, "avst_transmit: timeout waiting for ready (" & msg & ")", scope);
           exit;
         end if;
       end loop;
@@ -138,7 +138,7 @@ package body {{pkg}} is
     signal   clk    : in  std_logic;
     signal   m2s    : in  t_avst_m2s;
     signal   s2m    : out t_avst_s2m;
-    constant scope  : in  string            := C_BFM_SCOPE;
+    constant scope  : in  string            := C_TB_SCOPE_DEFAULT;
     constant config : in  t_avst_bfm_config := C_AVST_BFM_CONFIG_DEFAULT) is
     variable v_wait : natural := 0;
   begin
@@ -160,7 +160,7 @@ package body {{pkg}} is
       end if;
       v_wait := v_wait + 1;
       if v_wait >= config.max_wait_cycles then
-        bfm_alert(ERROR, "avst_receive: timeout waiting for valid (" & msg & ")", scope);
+        alert(ERROR, "avst_receive: timeout waiting for valid (" & msg & ")", scope);
         exit;
       end if;
     end loop;
@@ -174,7 +174,7 @@ package body {{pkg}} is
     signal   clk      : in  std_logic;
     signal   m2s      : in  t_avst_m2s;
     signal   s2m      : out t_avst_s2m;
-    constant scope    : in  string            := C_BFM_SCOPE;
+    constant scope    : in  string            := C_TB_SCOPE_DEFAULT;
     constant config   : in  t_avst_bfm_config := C_AVST_BFM_CONFIG_DEFAULT) is
     variable v_data : std_logic_vector(C_AVST_DATA_WIDTH - 1 downto 0);
     variable v_sop  : std_logic;
@@ -182,20 +182,20 @@ package body {{pkg}} is
   begin
     for i in exp_data'low to exp_data'high loop
       avst_receive_beat(v_data, v_sop, v_eop, msg, clk, m2s, s2m, scope, config);
-      bfm_check_value(v_data, exp_data(i),
+      check_value(v_data, exp_data(i),
                       "avst_expect " & msg & " beat " & integer'image(i - exp_data'low),
                       scope);
       if config.check_sop then
         if i = exp_data'low then
-          bfm_check_value(v_sop, '1', "avst_expect " & msg & ": startofpacket on the first beat", scope);
+          check_value(v_sop, '1', "avst_expect " & msg & ": startofpacket on the first beat", scope);
         else
-          bfm_check_value(v_sop, '0', "avst_expect " & msg & ": no startofpacket after the first beat", scope);
+          check_value(v_sop, '0', "avst_expect " & msg & ": no startofpacket after the first beat", scope);
         end if;
       end if;
       if i = exp_data'high then
-        bfm_check_value(v_eop, '1', "avst_expect " & msg & ": endofpacket on the last beat", scope);
+        check_value(v_eop, '1', "avst_expect " & msg & ": endofpacket on the last beat", scope);
       else
-        bfm_check_value(v_eop, '0', "avst_expect " & msg & ": no endofpacket before the end", scope);
+        check_value(v_eop, '0', "avst_expect " & msg & ": no endofpacket before the end", scope);
       end if;
     end loop;
   end procedure avst_expect;
