@@ -3,11 +3,15 @@
 VHDL and FPGA file templates for Emacs. It uses only what ships with Emacs
 (`auto-insert`, `completing-read`, `vhdl-mode`), with no packages to install.
 
-- Open a new `foo.vhd` and pick a template from a list of 46, the things an
+- Open a new `foo.vhd` and pick a template from a list of 55, the things an
   FPGA engineer keeps re-writing: entity, testbench, FSM, CDC synchronizers
   (including a handshake bus synchronizer and an async FIFO), UART, SPI,
   AXI-Lite, AXI-Stream and Avalon blocks, bus functional models (BFMs) to
   drive and check them, top level, GHDL and Vivado scripts, constraints.
+- Write the documents around a block as Org files from the same chooser:
+  interface control document (ICD) with register side effects, requirements,
+  design description, verification plan, test report, traceability matrix,
+  decision record, design review, release note.
 - Insert snippets at point: clocked process, `case`, `generate`, entity
   instance, and more. They are indented to fit the surrounding code.
 - New `.xdc` (Vivado) and `.sdc` files are filled with a constraints template.
@@ -222,12 +226,61 @@ under test.
 `project_mk` and `vivado_build` are project files, not VHDL. Use
 `C-c t n`, then type the file name (`project.mk`, `build.tcl`).
 
+**Documents** (Org mode, see [below](#system-engineering-documents))
+
+| Template          | Contents |
+|-------------------|----------|
+| `doc_icd`         | Interface control document: ports, clocks and resets, CDC list, register map with a side-effect entry per register and bit, bus timing, normal and illegal sequences, error causes, recovery after a software reboot, change control |
+| `doc_srs`         | Requirements: numbered shall-statements with rationale, verification method (T/A/I/D) and test case, grouped functional, interface, performance, resources, reset, constraints |
+| `doc_hdd`         | Design description: block diagram, file list, clocks and resets, CDC table, `reg_type` fields, FSM table, datapath, register interface, decisions, resource budget, requirements satisfied |
+| `doc_vplan`       | Verification plan: unit / integration / static / hardware levels, environment, test case table traced to requirements, bad-weather tests, contract monitors, mutation checks, coverage, exit criteria |
+| `doc_test_report` | Test report: verdict, configuration under test (commit, tools), results per test case, static results (timing, CDC, utilisation), hardware test, anomalies, deviations, sign-off |
+| `doc_rtm`         | Traceability matrix: requirement to design element, ICD clause, test case, monitor and result; reverse trace of things without a requirement; counts |
+| `doc_adr`         | Architecture decision record: requirement at stake, options with "do nothing" first, decision, consequences for ICD, design and tests |
+| `doc_review`      | Design review record: checklist for requirements and ICD, reset and clocks, CDC, code, verification, implementation; findings with owner; verdict |
+| `doc_release`     | Release note: version and `VERSION` register value, commit, tool, changes, ICD changes and whether they break software, verification status, known issues, upgrade steps |
+
 ### Snippets (`snippets/`)
 
 `libs`, `process_clk`, `process_comb`, `case`, `enum_state`, `record`,
 `slv_array`, `generate_for`, `generate_if`, `inst_entity`, `function`,
 `clog2`, `assert_check`, `attr_debug` (Vivado `mark_debug`), `tristate`,
 `tc` (a numbered test case that fails until you write its check).
+
+## System engineering documents
+
+The `doc_*` templates are Org files for the paperwork that keeps a block
+honest: the contract with the software team, the requirements it is tested
+against, and the records that show it was. They live in the repository next
+to the VHDL, so they are diffed, reviewed and versioned with it. Create one
+with `C-c t n` from a VHDL buffer, or `M-x vhdl-tpl-new-file` anywhere, and
+type the file name (`uart_icd.org`); the file name proposes the module name.
+New `.org` files are not filled by `auto-insert`, since not every Org file is
+an FPGA document.
+
+The documents are written for the blocks in this repository and refer to
+each other by section number:
+
+- `doc_icd` documents the register map of `axi_lite_regs` (CONTROL, STATUS,
+  SCRATCH, VERSION) around the `start` / `busy` / `done` interface of the
+  two-process skeleton. Every register and bit has a side-effect entry, "none"
+  included, because the side effect is what breaks software six months later.
+  Each timing clause names the testbench monitor (`p_tw_*`: an independent
+  process that drives nothing and stops the simulation on a violation) that
+  enforces it.
+- `doc_srs` numbers requirements `REQ-NNN` and points each at a test case
+  `TC-NN`, the numbering the `tc` snippet and `two_process_tb` use.
+- `doc_vplan` lists the test cases, the bad-weather tests (software that
+  ignores the ICD: double start, write while busy, reboot mid-transaction),
+  the monitors and the mutation checks; `doc_test_report` reports them, and
+  `doc_rtm` ties requirement, design section, ICD clause, test and result
+  together in one table.
+- `doc_hdd`, `doc_adr`, `doc_review` and `doc_release` cover the design, its
+  decisions, its review and what was shipped.
+
+The Org header (`#+AUTHOR`, `#+DATE`, `#+OPTIONS` with `^:nil` so that
+`uart_tx` is not a subscript) is `partials/header.org`; override it from
+your own directory to add a company or classification line.
 
 ## Bus functional models
 
@@ -295,6 +348,7 @@ repository (`templates/`, `snippets/`, `partials/`, all optional):
 ```
 ~/.emacs.d/vhdl-tpl/
 ├── partials/header.vhd      # replaces the bundled file header (licence, company, ...)
+├── partials/header.org      # same for the Org keywords of the document templates
 ├── templates/entity_arch.vhd    # overrides the bundled template of that name
 └── templates/axi_lite_slave.vhd # a new template, shows up in the list
 ```
@@ -353,7 +407,7 @@ The testbench template prints `TEST PASSED`. On a failed check it stops with
 ## Tests
 
 ```sh
-make test     # Elisp tests (ERT): engine, auto-insert, key bindings, indentation
+make test     # Elisp tests (ERT): engine, auto-insert, key bindings, indentation, Org documents
 make sim      # render every template with its defaults, then GHDL
               # analyse, elaborate and simulate them (needs ghdl)
 make tdd      # C-c t b bundle on the mk framework: RED on the skeleton,
@@ -423,9 +477,9 @@ jobs:
 
 ```
 vhdl-tpl.el     the whole engine (one file)
-templates/      whole-file templates
+templates/      whole-file templates (VHDL, constraints, scripts, Org documents)
 snippets/       fragments
-partials/       shared pieces (file headers)
+partials/       shared pieces (file headers, Org keywords)
 test/           ERT tests, render script, functional testbench
 Makefile        make check
 ```

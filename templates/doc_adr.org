@@ -1,0 +1,60 @@
+{{!Architecture decision record: the requirement at stake, options compared, decision, consequences}}
+#+TITLE: ADR-{{number|001}}: {{title|Level-triggered start instead of a pulse}}
+{{>header.org}}
+
+- Status :: proposed  (proposed, accepted, superseded by ADR-nnn, rejected)
+- Block :: ~{{module|$stem}}~
+- Date :: {{date}}
+- Deciders :: {{author}}
+
+* Context
+
+{{_}}
+
+What forced a decision: the requirement, the constraint, the request from
+the software team.  Quote the requirement ID, it is the measure every
+option is held against.
+
+- Requirement at stake :: {{prefix|REQ}}-001
+- Budget it touches :: latency / resources / timing / effort
+- Does the application really need this? :: yes, because ... / no, see
+  option "do nothing"
+
+* Options
+
+| Option         | Meets the requirement | Cost (LUT, FF, latency, effort) | Risk                          | ICD change |
+|----------------+-----------------------+---------------------------------+-------------------------------+------------|
+| A: do nothing  |                       | 0                               |                               | none       |
+| B:             |                       |                                 |                               |            |
+| C:             |                       |                                 |                               |            |
+
+"Do nothing" is always an option and is listed first: if the existing
+design already meets the requirement, that is the decision.
+
+** Option A: do nothing
+
+** Option B
+
+** Option C
+
+* Decision
+
+Option ..., because ...  One paragraph.  If the choice was between two
+options that both meet the requirement, say what tipped it (simplest
+testbench, fewest crossings, least software work).
+
+* Consequences
+
+- Good ::
+- Bad ::
+- ICD :: clauses that change, and the MAJOR / MINOR consequence
+- Design :: sections of ~doc_hdd~ to update
+- Tests :: test cases or monitors to add; the bad-weather case this
+  decision creates
+- Revisit when :: the condition under which this decision is wrong
+
+* Revision history
+
+| Version | Date   | Author   | Change          |
+|---------+--------+----------+-----------------|
+| 1.0.0   | {{date}} | {{author}} | Initial record  |

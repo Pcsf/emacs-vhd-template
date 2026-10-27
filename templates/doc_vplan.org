@@ -1,0 +1,119 @@
+{{!Verification plan: strategy, environment, test cases traced to requirements, exit criteria}}
+#+TITLE: Verification plan: {{module|$stem}}
+{{>header.org}}
+
+* Scope
+
+How ~{{module}}~ is shown to meet its requirements and its ICD before it is
+released.  Verification asks "did we build it right": every requirement
+with method T is covered by a numbered test case here, every ICD clause by
+a monitor.  Validation ("did we build the right thing") is the system
+test, outside this document.
+
+{{_}}
+
+- Items under test :: ~src/{{module}}.vhd~, ~src/{{module}}_pkg.vhd~
+- Requirements :: ~doc_srs~ of {{module}}, version {{version|1.0.0}}
+- Interface :: ~doc_icd~ of {{module}}
+- Results :: reported in ~doc_test_report~
+
+* Strategy
+
+| Level        | What                                         | Tool             | Verdict                       |
+|--------------+----------------------------------------------+------------------+-------------------------------|
+| Unit         | ~tb_{{module}}~: numbered test cases, monitors | GHDL, ~make test~ | ~TEST PASSED~ in the log     |
+| Integration  | Block in the top level, BFMs on the buses    | GHDL              | ~TEST PASSED~                 |
+| Static       | CDC report, timing report, utilisation       | Vivado / Quartus  | no unconstrained crossing, WNS >= 0 |
+| Hardware     | Driver smoke test on the board                | target board      | checklist in the test report  |
+
+What simulation cannot show: metastability, timing, how the tool maps the
+code.  Those are the static level, and they are not optional.
+
+* Environment
+
+| Item           | Version / value              |
+|----------------+------------------------------|
+| Simulator      | GHDL {{ghdl|4.1}}, ~--std=08~ |
+| Build          | mk framework, ~project.mk~   |
+| Synthesis      |                              |
+| Device         |                              |
+| Clock period   | {{period|10 ns}}             |
+
+Run: ~make test~.  A run that never prints ~TEST PASSED~ fails, and so does
+one that exceeds ~TEST_TIME~.  Inputs change just after a rising edge and
+outputs are checked on the falling edge, so a check reads the value the
+last edge produced.
+
+* Test cases
+
+One behaviour per test case, one sentence that says what is expected, and
+the requirement it serves.  The ~tc~ snippet adds the next one.
+
+| TC    | Expected behaviour                                  | Requirement       | Kind         |
+|-------+-----------------------------------------------------+-------------------+--------------|
+| TC-01 | Reset leaves busy and done low, VERSION reads back   | {{prefix|REQ}}-060, -021 | good weather |
+| TC-02 | Start raises busy on the next clock                 | {{prefix}}-001, -002 | good weather |
+| TC-03 | Busy stays high until the clock of done             | {{prefix}}-002     | good weather |
+| TC-04 | Done arrives within {{max_clocks|256}} clocks          | {{prefix}}-040     | good weather |
+| TC-05 | DONE clears on write-1, not on read                 | ICD 3.2           | good weather |
+| TC-10 | Start while busy is ignored                         | {{prefix}}-003     | bad weather  |
+| TC-11 | SOFT_RST during an operation aborts without done    | {{prefix}}-061     | bad weather  |
+| TC-12 | Write to a read-only register returns SLVERR        | ICD 3             | bad weather  |
+| TC-13 | Start while ERR=1 is ignored until SOFT_RST         | ICD 4.4           | bad weather  |
+| TC-14 | Commands replayed after a simulated software reboot | {{prefix}}-003     | bad weather  |
+
+** Bad weather
+
+The stimulus behaves like software that ignores the ICD: double start,
+writes while busy, a reboot in the middle of a transaction, enable before
+the clock is stable.  The expected result is always the same: the block
+stays safe, the bus is never locked, and the monitor for the clause fires.
+
+* Contract monitors
+
+Independent processes in ~tb_{{module}}~ that drive nothing and stop the
+simulation on an ICD violation.  One per clause, named after it.  A monitor
+that never fires in the bad-weather tests is a monitor that does not work.
+
+| Monitor                      | ICD clause | Fires in |
+|------------------------------+------------+----------|
+| ~p_tw_no_start_while_busy~   | 4.4        | TC-10    |
+| ~p_tw_busy_follows_start~    | 4.3        | never    |
+| ~p_tw_done_within_max~       | 4.3        | never    |
+| ~p_tw_bus_response_within_2~ | 4.1        | never    |
+| ~p_tw_soft_rst_aborts~       | 4.4        | TC-11    |
+
+* Mutation checks
+
+A test that has never failed has not shown it can.  Each test case is broken
+once on purpose, the failure is seen, and the change undone.
+
+| TC    | Mutant                                   | Failed as expected |
+|-------+------------------------------------------+--------------------|
+| TC-01 | Wrong ~REG_RESET~ value                   |                    |
+| TC-02 | Drop the start condition in ~comb~        |                    |
+| TC-04 | Off-by-one in the operation counter       |                    |
+
+* Coverage
+
+- Requirements: every T requirement has a TC in the table above; the
+  traceability matrix (~doc_rtm~) is the check.
+- Code: every FSM state entered and left; every ~case~ branch including
+  ~others~.  Measured with ~ghdl --coverage~ or by inspection of the log.
+- Functional: each ICD side effect exercised at least once.
+
+* Exit criteria
+
+- [ ] ~make test~ prints ~TEST PASSED~ for every testbench
+- [ ] Every T requirement has a passing test case
+- [ ] Every bad-weather test fires its monitor and only its monitor
+- [ ] Every mutation check has failed once
+- [ ] CDC report clean, timing met, utilisation within budget
+- [ ] Hardware smoke test passed
+- [ ] Test report written and signed
+
+* Revision history
+
+| Version | Date   | Author   | Change          |
+|---------+--------+----------+-----------------|
+| {{version}} | {{date}} | {{author}} | Initial release |

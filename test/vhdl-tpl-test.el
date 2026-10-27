@@ -101,7 +101,9 @@
                   "bfm_axis_pkg" "bfm_avalon_st_pkg" "bfm_axilite_pkg"
                   "bfm_avalon_mm_pkg" "bfm_uart_pkg" "bfm_spi_pkg"
                   "testbench_bfm" "spi_slave" "i2c_master" "i2c_slave"
-                  "bfm_i2c_pkg" "two_process_skeleton" "two_process_tb"))
+                  "bfm_i2c_pkg" "two_process_skeleton" "two_process_tb"
+                  "doc_icd" "doc_srs" "doc_hdd" "doc_vplan" "doc_test_report"
+                  "doc_rtm" "doc_adr" "doc_review" "doc_release"))
     (should (assoc name (vhdl-tpl--list 'templates))))
   (should (>= (length (vhdl-tpl--list 'snippets)) 16)))
 
@@ -122,6 +124,63 @@
                       "\\$\\(?:file\\|filename\\|stem\\|date\\|year\\|author\\|email\\)"
                       out))
          (should (<= (cl-count ?\uE000 out) 1)))))))
+
+;;;; Org documents
+
+(ert-deftest vhdl-tpl-test-org-documents-are-well-formed ()
+  "Every .org template renders to an Org document with a title and headlines."
+  (require 'org)
+  (vhdl-tpl-test--with-defaults
+   (let ((docs (cl-remove-if-not
+                (lambda (e) (string-suffix-p ".org" (cdr e)))
+                (vhdl-tpl--list 'templates))))
+     (should (>= (length docs) 9))
+     (dolist (entry docs)
+       (let ((out (vhdl-tpl-render (vhdl-tpl--read-file (cdr entry)) nil
+                                   "/tmp/uart.org")))
+         (should (string-prefix-p "#+TITLE: " out))
+         (should (string-match-p "^#\\+AUTHOR: Test Author$" out))
+         (should (string-match-p "^#\\+OPTIONS: .*\\^:nil" out))
+         ;; The file name feeds the module name, as for VHDL templates.
+         (should (string-match-p "uart" out))
+         (with-temp-buffer
+           (insert (string-replace vhdl-tpl--cursor "" out))
+           (org-mode)
+           (let* ((tree (org-element-parse-buffer))
+                  (headlines (org-element-map tree 'headline #'identity))
+                  (tables (org-element-map tree 'table #'identity)))
+             (should (>= (length headlines) 3))
+             (should (>= (length tables) 1))
+             ;; A revision history closes every document.
+             (should (member "Revision history"
+                             (mapcar (lambda (h)
+                                       (org-element-property :raw-value h))
+                                     headlines))))))))))
+
+(ert-deftest vhdl-tpl-test-org-tables-are-aligned-on-insert ()
+  "Inserting a document into an Org buffer re-aligns its tables."
+  (require 'org)
+  (vhdl-tpl-test--with-defaults
+   (with-temp-buffer
+     (org-mode)
+     (setq buffer-file-name "/tmp/uart_icd.org")
+     (vhdl-tpl-insert 'templates "doc_icd")
+     (setq buffer-file-name nil)
+     (goto-char (point-min))
+     (should (search-forward "#+TITLE: ICD: uart_icd" nil t))
+     ;; The port table: a cell holding an answer is as wide as the others.
+     (should (re-search-forward "^| Port " nil t))
+     (let ((header (buffer-substring (line-beginning-position) (line-end-position))))
+       (forward-line 2)
+       (should (looking-at "| clk "))
+       (should (= (length header)
+                  (- (line-end-position) (line-beginning-position))))
+       (should (string-match-p "System clock, 100 MHz" (buffer-substring (line-beginning-position)
+                                                             (line-end-position))))
+       (forward-line 1)
+       (should (= (length header)
+                  (- (line-end-position) (line-beginning-position)))))
+     (should-not (search-forward "\uE000" nil t)))))
 
 ;;;; User directory
 

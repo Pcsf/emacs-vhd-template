@@ -1,0 +1,5 @@
+#+AUTHOR: {{author}}
+#+DATE: {{date}}
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall

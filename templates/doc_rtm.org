@@ -1,0 +1,61 @@
+{{!Requirements traceability matrix: requirement to design element, ICD clause, test case and result}}
+#+TITLE: Traceability: {{module|$stem}}
+{{>header.org}}
+
+* Scope
+
+One row per requirement of ~{{module}}~, from its ID to the design element
+that implements it, the ICD clause that exposes it, the test case that
+verifies it and the latest result.  An empty cell is a finding: a
+requirement nobody implemented, nobody tested, or a test nobody asked for.
+
+{{_}}
+
+- Sources :: ~doc_srs~ (requirements), ~doc_hdd~ (design), ~doc_icd~
+  (interface), ~doc_vplan~ (tests), ~doc_test_report~ (results)
+- Updated :: with every change to one of those; the matrix is wrong the
+  day after it stops being maintained, so keep it short
+
+* Matrix
+
+| Requirement | Title                         | Method | Design (HDD)      | ICD   | Test   | Monitor                    | Result |
+|-------------+-------------------------------+--------+-------------------+-------+--------+----------------------------+--------|
+| {{prefix|REQ}}-001 | Start begins one operation | T      | FSM, 5.2          | 3.1   | TC-02  |                            |        |
+| {{prefix}}-002 | Busy covers the operation  | T      | FSM, 5.2          | 3.2   | TC-03  | ~p_tw_busy_follows_start~  |        |
+| {{prefix}}-003 | Illegal input is ignored   | T      | FSM, 5.2          | 4.4   | TC-10  | ~p_tw_no_start_while_busy~ |        |
+| {{prefix}}-020 | Register interface         | T      | 5.4               | 3     | TC-12  |                            |        |
+| {{prefix}}-021 | Version read-back          | T      | 5.4               | 3.4   | TC-01  |                            |        |
+| {{prefix}}-040 | Latency                    | T, A   | counter, 5.1      | 4.3   | TC-04  | ~p_tw_done_within_max~     |        |
+| {{prefix}}-041 | Clock frequency            | A      | 3                 | 2.2   | timing |                            |        |
+| {{prefix}}-050 | Resource budget            | A      | 8                 |       | util.  |                            |        |
+| {{prefix}}-060 | Reset state                | T      | ~REG_RESET~, 3    | 2.2   | TC-01  |                            |        |
+| {{prefix}}-061 | Recovery without reset     | T      | ~SOFT_RST~, 3     | 5.2   | TC-11  | ~p_tw_soft_rst_aborts~     |        |
+| {{prefix}}-080 | Language and style         | I      | 5.1               |       | review |                            |        |
+| {{prefix}}-081 | Self-checking testbench    | I, D   |                   |       | make test |                         |        |
+
+Result: PASS, FAIL, OPEN (not yet run), N/A with a reason.
+
+* Reverse trace
+
+Things that exist without a requirement.  Each one is either given a
+requirement or questioned: "does the application really need this?"
+
+| Design element or test       | Why it exists                 | Action                        |
+|------------------------------+-------------------------------+-------------------------------|
+| SCRATCH register             | bus bring-up                  | add {{prefix}}-022 or accept  |
+
+* Status
+
+| Count                                   | n |
+|-----------------------------------------+---|
+| Requirements                            |   |
+| ... with a design element               |   |
+| ... with a test or analysis             |   |
+| ... verified (PASS)                     |   |
+| Tests without a requirement             |   |
+
+* Revision history
+
+| Version | Date   | Author   | Change          |
+|---------+--------+----------+-----------------|
+| {{version|1.0.0}} | {{date}} | {{author}} | Initial release |

@@ -1,0 +1,149 @@
+{{!Requirements specification: numbered shall-statements with rationale and verification method}}
+#+TITLE: Requirements: {{system|$stem}}
+{{>header.org}}
+
+* Scope
+
+What ~{{system}}~ has to do, seen from outside, and how each statement will
+be shown to hold.  It does not say how the block is built (design
+description) or what its registers look like (ICD); it is what those two
+documents and the testbench are checked against.
+
+{{_}}
+
+- Parent :: the system requirement or ticket this block exists for
+- Children :: ~doc_icd~ (interface), ~doc_hdd~ (design), ~doc_vplan~
+  (verification), ~doc_rtm~ (traceability)
+
+* Reading a requirement
+
+- One ID per statement, ~{{prefix|REQ}}-NNN~, never reused once published.
+  Gaps are fine; renumbering is not.
+- One "shall" per requirement.  "And" usually means two requirements.
+- Every requirement has a rationale: the question to answer is "does the
+  application really need this?".  No rationale, no requirement.
+- Every requirement names a verification method and, once it exists, the
+  test case or analysis that verifies it:
+
+| Method | Meaning                                                           |
+|--------+-------------------------------------------------------------------|
+| T      | Test: a numbered test case in ~tb_{{system}}~ or on hardware      |
+| A      | Analysis: calculation or report (timing, CDC, resource)           |
+| I      | Inspection: reading the code or the constraint file               |
+| D      | Demonstration: it visibly works, no measurement                   |
+
+- Status is one of proposed, approved, verified, deleted.
+
+* Requirements
+
+** Functional
+
+*** {{prefix}}-001 Start begins exactly one operation
+- Shall :: The block shall begin one operation on each 0 to 1 transition of
+  ~start~ sampled while it is idle.
+- Rationale :: Level-triggered start lets the host hold the line without a
+  timing requirement on the pulse width.
+- Verification :: T, TC-02
+- Status :: proposed
+
+*** {{prefix}}-002 Busy covers the whole operation
+- Shall :: The block shall assert ~busy~ on the clock after ~start~ is
+  sampled high and keep it asserted until the clock in which ~done~ pulses.
+- Rationale :: Software polls one bit to know whether it may write.
+- Verification :: T, TC-02 and TC-03
+- Status :: proposed
+
+*** {{prefix}}-003 Illegal input is ignored
+- Shall :: A ~start~ while ~busy~ is asserted shall have no effect on the
+  running operation or on its result.
+- Rationale :: A watchdog reboot or a context switch can replay commands.
+  The hardware stays correct without the software being correct.
+- Verification :: T, bad-weather test TC-10
+- Status :: proposed
+
+** Interface
+
+*** {{prefix}}-020 Register interface
+- Shall :: The block shall expose the register map of ICD section 3 on an
+  {{bus|AXI4-Lite}} slave port.
+- Rationale :: One bus for all blocks in the project; one BFM to test it.
+- Verification :: T, ~bfm_axilite_pkg~ checks in ~tb_{{system}}~
+- Status :: proposed
+
+*** {{prefix}}-021 Version read-back
+- Shall :: ~VERSION~ shall read the value stated in the ICD of the release.
+- Rationale :: The driver refuses an unknown MAJOR instead of guessing.
+- Verification :: T, TC-01
+- Status :: proposed
+
+** Performance
+
+*** {{prefix}}-040 Latency
+- Shall :: ~done~ shall pulse no later than {{max_clocks|256}} clocks after
+  ~start~ is sampled high.
+- Rationale :: Derived from the system loop time budget of ...; show the
+  calculation here, it is the shield against later "make it faster" requests.
+- Verification :: T, TC-04; A, worst-case path count
+- Status :: proposed
+
+*** {{prefix}}-041 Clock frequency
+- Shall :: The block shall meet timing at {{clk_mhz|100}} MHz on the target
+  device with the project constraints.
+- Rationale :: Shared system clock; no second clock domain for this block.
+- Verification :: A, timing report of the release build
+- Status :: proposed
+
+** Resources
+
+*** {{prefix}}-050 Resource budget
+- Shall :: The block shall use at most {{luts|1000}} LUTs, {{ffs|1000}}
+  flip-flops and {{brams|0}} block RAMs.
+- Rationale :: Share of the device reserved for this block in the system
+  budget.
+- Verification :: A, utilisation report
+- Status :: proposed
+
+** Reset and start-up
+
+*** {{prefix}}-060 Reset state
+- Shall :: After ~rst~ the block shall be idle with every register at the
+  reset value of the ICD, within 2 clocks of the release of ~rst~.
+- Rationale :: Software may touch the block as soon as the CPU runs.
+- Verification :: T, TC-01
+- Status :: proposed
+
+*** {{prefix}}-061 Recovery without hardware reset
+- Shall :: Writing ~SOFT_RST~ shall return the block to the reset state
+  from any state, including an error, without a ~rst~.
+- Rationale :: A CPU-only reboot does not reset the fabric (ICD section 5).
+- Verification :: T, bad-weather test TC-11
+- Status :: proposed
+
+** Design constraints
+
+*** {{prefix}}-080 Language and style
+- Shall :: The block shall be written in VHDL-2008 in the two-process style
+  with a synchronous, active-high reset.
+- Rationale :: Project coding standard; one reset strategy per design.
+- Verification :: I
+- Status :: proposed
+
+*** {{prefix}}-081 Self-checking testbench
+- Shall :: The block shall ship with a testbench that prints ~TEST PASSED~
+  only when every test case passed and stops with ~severity failure~
+  otherwise.
+- Rationale :: ~make test~ and CI need a verdict, not a waveform.
+- Verification :: I, D
+- Status :: proposed
+
+* Open points
+
+| ID | Question                         | Owner | Due | Resolution |
+|----+----------------------------------+-------+-----+------------|
+|    |                                  |       |     |            |
+
+* Revision history
+
+| Version | Date   | Author   | Change          |
+|---------+--------+----------+-----------------|
+| {{version|1.0.0}} | {{date}} | {{author}} | Initial release |

@@ -1,0 +1,154 @@
+{{!Design description: block diagram, clocks and resets, CDC list, FSM, registers, resource budget}}
+#+TITLE: Design description: {{module|$stem}}
+{{>header.org}}
+
+* Scope
+
+How ~{{module}}~ is built and why.  The boundary (ports, registers, timing
+seen by software) is in the ICD and is not repeated here; this document
+explains the inside well enough that someone else can change it without
+breaking the ICD.
+
+{{_}}
+
+- Requirements :: ~doc_srs~ of {{module}}; section 9 lists which element
+  satisfies which
+- Interface :: ~doc_icd~ of {{module}}, version {{version|1.0.0}}
+- Decisions :: ~doc_adr~ records, listed in section 7
+
+* Overview
+
+One paragraph: what goes in, what comes out, what the block does in between.
+
+#+BEGIN_EXAMPLE
+            +-----------------------------------------------+
+  s_axi --->| regs  |  ctrl  +--------+   +---------------+ |
+            | (ICD) |------->|  FSM   |-->|   datapath    | |---> out
+  start --->|       |        | (5.2)  |   |   (5.3)       | |
+            |       |<-------+--------+   +---------------+ |---> done
+            +-----------------------------------------------+
+                                  clk, rst
+#+END_EXAMPLE
+
+| File                       | Unit                 | Purpose                               |
+|----------------------------+----------------------+---------------------------------------|
+| ~src/{{module}}_pkg.vhd~   | ~{{module}}_pkg~     | Port records, component, constants    |
+| ~src/{{module}}.vhd~       | ~{{module}}~         | Two-process block: ~comb~ and ~regs~  |
+| ~tb/tb_{{module}}.vhd~     | ~tb_{{module}}~      | Test cases and ~p_tw_*~ monitors      |
+
+* Clocks and resets
+
+| Clock | Frequency      | Source      | Used by           | Constraint       |
+|-------+----------------+-------------+-------------------+------------------|
+| clk   | {{clk_mhz|100}} MHz | top level | the whole block | ~create_clock~ at the top |
+
+- Reset is synchronous and active high, applied in ~regs~ with ~REG_RESET~
+  as both the reset and the initial value, so simulation and the
+  bitstream start in the same state.
+- Nothing is reset asynchronously.  An external button goes through
+  ~reset_sync~ at the top level.
+- ~SOFT_RST~ (ICD 3.1) is a second source of the same reset term in ~comb~:
+  ~v := REG_RESET~ when it is set.
+
+* Clock domain crossings
+
+Every crossing in or around this block, including the ones that are
+somebody else's instance, so the list is complete when the CDC report is
+read.
+
+| From   | To     | Signal(s)    | Structure              | Constraint                   | Verified by |
+|--------+--------+--------------+------------------------+------------------------------+-------------|
+| (none) |        |              |                        |                              |             |
+
+Rules used: single-bit levels through ~sync_2ff~, pulses through
+~pulse_sync~, words through ~bus_sync_handshake~ or ~fifo_async~; never a
+multi-bit bus through independent synchronizers.
+
+* Block design
+
+** Structure
+
+Two-process style (~two_process~ template): ~comb~ computes the next state
+~v~ from ~r~ and the inputs, ~regs~ clocks ~rin~ into ~r~.  Outputs are
+driven from register fields, never from ~comb~ directly, so every output is
+glitch-free and timing starts at a flop.
+
+| ~reg_type~ field | Width | Reset   | Purpose                                 |
+|------------------+-------+---------+-----------------------------------------|
+| ~state~          | enum  | ~IDLE~  | Control FSM state, section 5.2          |
+| ~busy~           | 1     | 0       | ICD STATUS.BUSY                         |
+| ~done~           | 1     | 0       | ICD STATUS.DONE, cleared by W1C          |
+| ~err~            | 1     | 0       | ICD STATUS.ERR                          |
+| ~count~          | {{count_bits|8}} | 0 | Operation timer, bounds the latency |
+
+** Control FSM
+
+| State    | Meaning                 | Leaves on                   | To        | Outputs            |
+|----------+-------------------------+-----------------------------+-----------+--------------------|
+| ~IDLE~   | Waiting for start       | ~start~ rising, ~err~ = 0   | ~RUN~     | busy=0             |
+| ~RUN~    | Operation in progress   | datapath finished           | ~FINISH~  | busy=1             |
+|          |                         | ~count~ = max               | ~FAULT~   |                    |
+| ~FINISH~ | One clock               | always                      | ~IDLE~    | done=1, busy=0     |
+| ~FAULT~  | Error latched           | ~SOFT_RST~                  | ~IDLE~    | err=1              |
+
+- The state is an enumeration; the ~others~ branch returns to ~FAULT~ with
+  ~err~ set, so an illegal encoding is reported, not silently recovered.
+- ~start~ is a level: the rising edge is detected on a registered copy, so
+  holding it high starts exactly one operation ({{prefix|REQ}}-001).
+
+** Datapath
+
+Describe the arithmetic or data movement: widths, where it is registered,
+what it costs.  Name every DSP or block RAM you expect the tool to infer
+and the template or attribute that makes it do so (~ram_sdp~, ~mac_dsp~).
+
+** Register interface
+
+~axi_lite_regs~ holds CONTROL and SCRATCH and returns STATUS and VERSION.
+CONTROL bits are levels into ~comb~; STATUS is assembled from ~r~ fields.
+DONE is write-1-to-clear: the clear is a one-clock term in ~comb~, so a
+clear and a new completion in the same clock keep the completion.
+
+* Where each kind of signal lives
+
+| Signal is              | Goes to                                   |
+|------------------------+-------------------------------------------|
+| needed after the next edge, or an output | a ~reg_type~ field          |
+| memory                 | its own entity (~ram_sdp~, ~fifo_sync~)   |
+| from another clock     | a synchronizer first (section 4)           |
+| anything else          | a variable in ~comb~ with a default        |
+
+* Design decisions
+
+| ADR     | Decision                                      | Status   |
+|---------+-----------------------------------------------+----------|
+| ADR-001 | Level-triggered start instead of a pulse      | accepted |
+
+* Resource and timing budget
+
+| Item         | Budget ({{prefix}}-050/041) | Estimate | Actual (release build) |
+|--------------+-------------------+----------+------------------------|
+| LUTs         |                   |          |                        |
+| Flip-flops   |                   |          |                        |
+| Block RAM    |                   |          |                        |
+| DSP          |                   |          |                        |
+| Fmax         | {{clk_mhz}} MHz    |          |                        |
+
+* Requirements satisfied
+
+| Requirement      | Satisfied by                     | Shown by       |
+|------------------+----------------------------------+----------------|
+| {{prefix}}-001    | FSM ~IDLE~ to ~RUN~ on start edge | TC-02          |
+| {{prefix}}-060    | ~REG_RESET~ in ~regs~             | TC-01          |
+
+* Observability
+
+- ~mark_debug~ on ~r.state~, ~r.busy~ and ~r.err~ (snippet ~attr_debug~)
+  when an ILA is needed; remove before release.
+- ~make simulate~ writes GHW; record signals are visible there, not in VCD.
+
+* Revision history
+
+| Version | Date   | Author   | Change          |
+|---------+--------+----------+-----------------|
+| {{version}} | {{date}} | {{author}} | Initial release |

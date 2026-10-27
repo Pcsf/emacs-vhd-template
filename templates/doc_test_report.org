@@ -1,0 +1,92 @@
+{{!Verification report: configuration under test, results per test case, coverage, anomalies, verdict}}
+#+TITLE: Test report: {{module|$stem}}
+{{>header.org}}
+
+* Verdict
+
+{{_}}
+
+| Item                     | Result                                   |
+|--------------------------+------------------------------------------|
+| Overall                  | PASS / FAIL / PASS WITH DEVIATIONS       |
+| Test cases               | n passed, n failed, n not run of n       |
+| Open anomalies           | n (none blocking)                        |
+| Recommendation           | release / fix and re-run                 |
+
+* Configuration under test
+
+| Item              | Value                                   |
+|-------------------+-----------------------------------------|
+| Block             | ~{{module}}~, ICD version {{version|1.0.0}} |
+| Git commit        | ~{{commit|0000000}}~, branch, clean tree yes/no |
+| Generics          | defaults unless listed                  |
+| Simulator         | GHDL {{ghdl|4.1}}, ~--std=08~           |
+| Synthesis tool    |                                         |
+| Device            |                                         |
+| Plan              | ~doc_vplan~ of {{module}}, version       |
+| Run by / on       | {{author}}, {{date}}                    |
+
+Command and logs:
+
+#+BEGIN_EXAMPLE
+make test                      # build/test/tb_{{module}}.log
+make simulate                  # build/<project>.ghw
+#+END_EXAMPLE
+
+* Results
+
+| TC    | Expected behaviour                               | Requirement | Result | Log line / note |
+|-------+--------------------------------------------------+-------------+--------+-----------------|
+| TC-01 | Reset leaves busy and done low                   |             | PASS   |                 |
+| TC-02 | Start raises busy on the next clock              |             | PASS   |                 |
+| TC-10 | Start while busy is ignored                      |             | PASS   | monitor fired   |
+
+Monitors: each bad-weather test fired its monitor and no good-weather test
+fired any.  List the exceptions here, there should be none.
+
+Mutation checks: every row of the plan's table was run; list any mutant
+that did not make its test fail, each one is an anomaly.
+
+* Static results
+
+| Check             | Result                | Reference                    |
+|-------------------+-----------------------+------------------------------|
+| Timing            | WNS ns, THS ns        | report_timing_summary        |
+| CDC               | n crossings, n issues | report_cdc                   |
+| Utilisation       | LUT / FF / BRAM / DSP | report_utilization           |
+| Lint / warnings   | n, all reviewed       | synthesis log                |
+
+* Hardware test
+
+| Step                                | Result | Note |
+|-------------------------------------+--------+------|
+| Bitstream loads, VERSION reads back |        |      |
+| Recovery sequence from ICD 5.2      |        |      |
+| Driver smoke test                   |        |      |
+
+* Anomalies
+
+| ID    | TC    | Description                      | Severity | Disposition                |
+|-------+-------+----------------------------------+----------+----------------------------|
+| AN-01 |       |                                  | low      | fixed in commit / deferred |
+
+Severity: blocking (release held), major (fix before next release), low
+(noted).  A deferred anomaly needs an owner and a ticket.
+
+* Deviations from the plan
+
+Tests not run, skipped steps, changed tools, and why.  "None" is a valid
+entry and the expected one.
+
+* Sign-off
+
+| Role       | Name     | Date   | Signature |
+|------------+----------+--------+-----------|
+| Tested by  | {{author}} | {{date}} |           |
+| Reviewed by|          |        |           |
+
+* Revision history
+
+| Version | Date   | Author   | Change          |
+|---------+--------+----------+-----------------|
+| 1.0.0   | {{date}} | {{author}} | Initial issue   |

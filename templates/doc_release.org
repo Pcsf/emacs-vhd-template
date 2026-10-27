@@ -1,0 +1,72 @@
+{{!Release note for a bitstream or IP version: identity, changes, verification status, known issues, upgrade}}
+#+TITLE: Release {{version|1.0.0}}: {{module|$stem}}
+{{>header.org}}
+
+* Identity
+
+| Item              | Value                                    |
+|-------------------+------------------------------------------|
+| Block / design    | ~{{module}}~                              |
+| Version           | {{version}}, VERSION register reads ~{{version_hex|0x0001_0000}}~ |
+| Git tag / commit  | ~v{{version}}~ / ~{{commit|0000000}}~, clean tree |
+| Build date        | {{date}}                                 |
+| Tool              |                                          |
+| Device / board    |                                          |
+| Bitstream         | file name and checksum                   |
+| Built by          | {{author}}                               |
+
+{{_}}
+
+* Changes since the previous release
+
+** Added
+
+** Changed
+
+** Fixed
+
+** Interface
+
+ICD changes, with the clause and whether MAJOR or MINOR moved.  "None" when
+the ICD is untouched: software can then stay as it is.
+
+| ICD clause | Change | Breaks existing software |
+|------------+--------+--------------------------|
+| none       |        | no                       |
+
+* Verification status
+
+| Check                    | Result                 | Reference                     |
+|--------------------------+------------------------+-------------------------------|
+| ~make test~              | TEST PASSED, n cases   | ~doc_test_report~ version     |
+| Timing                   | WNS ns, THS ns         | timing summary of this build  |
+| CDC                      | clean                  | ~report_cdc~                  |
+| Utilisation              | LUT / FF / BRAM / DSP  | utilisation report            |
+| Hardware                 | tested on board ...    | test report, hardware section |
+| Review                   | approved               | ~doc_review~ of {{date}}      |
+
+* Known issues and limitations
+
+| ID    | Description                         | Workaround              | Planned for |
+|-------+-------------------------------------+-------------------------+-------------|
+|       |                                     |                         |             |
+
+* Upgrade notes for software
+
+1. Check VERSION: MAJOR must be ... .
+2. Run the recovery sequence of ICD section 5.2 after loading the bitstream.
+3. Anything new the driver must do, or may stop doing.
+
+* Files delivered
+
+| File                  | Purpose                        |
+|-----------------------+--------------------------------|
+| ~{{module}}.bit~      | bitstream                      |
+| ~doc_icd.org~         | ICD version {{version}}         |
+| ~src/~, ~tb/~         | sources at the tagged commit   |
+
+* Revision history
+
+| Version | Date   | Author   | Change          |
+|---------+--------+----------+-----------------|
+| {{version}} | {{date}} | {{author}} | This release    |

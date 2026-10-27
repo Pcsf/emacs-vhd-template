@@ -45,6 +45,9 @@
 (require 'subr-x)
 (require 'autoinsert)
 
+(declare-function org-table-map-tables "org-table" (function &optional quietly))
+(declare-function org-table-align "org-table" ())
+
 (defgroup vhdl-tpl nil
   "VHDL and FPGA file templates."
   :group 'tools
@@ -254,7 +257,9 @@ marked by `vhdl-tpl--cursor' in the result."
 
 (defun vhdl-tpl--insert-string (string &optional indent)
   "Insert STRING at point and move point to its cursor marker.
-Non-nil INDENT re-indents the inserted lines according to the major mode."
+Non-nil INDENT re-indents the inserted lines according to the major mode.
+In an Org buffer the inserted tables are re-aligned, since the answers
+rarely have the width of the markers they replace."
   (let ((start (point-marker))
         (cursor nil))
     (insert string)
@@ -270,6 +275,10 @@ Non-nil INDENT re-indents the inserted lines according to the major mode."
                          (goto-char start)
                          (line-beginning-position))
                        end))
+      (when (derived-mode-p 'org-mode)
+        (save-restriction
+          (narrow-to-region start end)
+          (org-table-map-tables #'org-table-align t)))
       (goto-char (or cursor end))
       (when (and cursor indent
                  (save-excursion (beginning-of-line) (looking-at "[ \t]*$")))

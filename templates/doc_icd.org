@@ -1,0 +1,204 @@
+{{!Interface Control Document: ports, clocks, register map with side effects, timing, recovery}}
+#+TITLE: ICD: {{module|$stem}}
+{{>header.org}}
+
+* Scope
+
+This document is the contract between ~{{module}}~ and everything that talks
+to it: the host software through the {{bus|AXI4-Lite}} register interface and
+the neighbouring logic on its other ports.  It says what can be observed and
+relied on at the boundary, not how the block works inside (that is the design
+description).  A clause here is binding on both sides: the hardware is tested
+against it, and software that breaks it is wrong even when it happens to work.
+
+{{_}}
+
+- Block :: ~src/{{module}}.vhd~, ports in ~src/{{module}}_pkg.vhd~
+- Version :: {{version|1.0.0}}, read back from ~VERSION~ (section 3.4)
+- Enforced by :: ~tb/tb_{{module}}.vhd~; the ~p_tw_*~ processes named below
+  watch the interface and stop the simulation on a violation
+
+* Physical boundary
+
+** Ports
+
+| Port    | Dir | Width | Clock  | Description                                  |
+|---------+-----+-------+--------+----------------------------------------------|
+| clk     | in  | 1     |        | System clock, {{clk_mhz|100}} MHz             |
+| rst     | in  | 1     | clk    | Synchronous, active high, held >= 2 clocks   |
+| s_axi_* | i/o |       | clk    | {{bus}} slave, 32-bit data, byte strobes      |
+| start   | in  | 1     | clk    | Level; see CONTROL.START for the contract    |
+| busy    | out | 1     | clk    | High from the clock after start to done      |
+| done    | out | 1     | clk    | One-clock pulse, never together with busy    |
+| irq     | out | 1     | clk    | Level, high while STATUS.DONE or STATUS.ERR  |
+
+Widths and directions are the VHDL entity; if the two disagree the VHDL is
+wrong and this document wins.
+
+** Clocks and resets
+
+| Clock | Frequency      | Source        | Drives                      |
+|-------+----------------+---------------+-----------------------------|
+| clk   | {{clk_mhz}} MHz | PLL, top level | everything in this block   |
+
+- ~rst~ must be asserted for at least 2 clocks and is released synchronously
+  (~reset_sync~ at the top level does this for an external button).
+- Every register returns to its reset value in the table below.  Nothing in
+  this block survives ~rst~: there is no persistent state.
+- A CPU-only reset (watchdog, debugger) does *not* reset this block.  See
+  section 5.2.
+
+** Clock domain crossings
+
+None inside the block.  If a port is driven from another clock, the crossing
+belongs to the instantiating level and must use ~sync_2ff~ (single bits),
+~pulse_sync~ (pulses) or ~bus_sync_handshake~ / ~fifo_async~ (words) with the
+constraints listed in their headers.
+
+| From clock | To clock | Signal(s) | Structure | Constraint |
+|------------+----------+-----------+-----------+------------|
+|            |          |           |           |            |
+
+* Register map
+
+Base address {{base|0x4000_0000}}.  Registers are 32 bits wide at byte
+offsets; only address bits 3:2 are decoded, so the map repeats every 16
+bytes.  Byte strobes are honoured.  A write to a read-only register is
+answered with ~SLVERR~ and changes nothing.  Reserved bits read as 0 and
+must be written as 0.
+
+Every register has a side-effect entry, "none" included.  Side effects
+are what break software six months later, so they are written out even
+when the register is boring.
+
+| Offset | Name    | Access | Reset       | Side effect                                   |
+|--------+---------+--------+-------------+-----------------------------------------------|
+| 0x00   | CONTROL | RW     | 0x0000_0000 | none: the bits are levels, nothing auto-clears |
+| 0x04   | STATUS  | RO     | 0x0000_0000 | none: reading clears nothing (see DONE)        |
+| 0x08   | SCRATCH | RW     | 0x0000_0000 | none                                          |
+| 0x0C   | VERSION | RO     | see 3.5     | none                                          |
+
+** CONTROL (0x00)
+
+| Bits | Name     | Access | Reset | Meaning and side effect                                  |
+|------+----------+--------+-------+----------------------------------------------------------|
+| 0    | START    | RW     | 0     | Level.  A 0 to 1 transition starts one operation.  The   |
+|      |          |        |       | hardware never clears it: software writes 0 then 1 for   |
+|      |          |        |       | the next one.  A write of 1 while BUSY=1 is ignored and  |
+|      |          |        |       | is a contract violation (~p_tw_no_start_while_busy~).    |
+| 1    | SOFT_RST | RW     | 0     | Level.  While 1 the block is held in reset exactly as by |
+|      |          |        |       | ~rst~, STATUS reads 0.  Software writes 1, then 0.       |
+| 2    | IRQ_EN   | RW     | 0     | 1 lets ~irq~ follow DONE or ERR.  No effect on STATUS.   |
+| 31:3 | reserved |        | 0     | Write 0.                                                 |
+
+** STATUS (0x04)
+
+| Bits | Name     | Access | Reset | Meaning and side effect                                   |
+|------+----------+--------+-------+-----------------------------------------------------------|
+| 0    | BUSY     | RO     | 0     | 1 from the clock after START is sampled until done.       |
+| 1    | DONE     | RO/W1C | 0     | Set when an operation completes.  *Cleared by writing 1*  |
+|      |          |        |       | to this bit (write-1-to-clear); reading does not clear it. |
+| 2    | ERR      | RO     | 0     | Set on the faults in section 5.1.  Cleared only by        |
+|      |          |        |       | SOFT_RST or ~rst~.  BUSY is 0 whenever ERR is 1.          |
+| 31:3 | reserved | RO     | 0     |                                                           |
+
+** SCRATCH (0x08)
+
+Reads back what was written.  No hardware function; it exists so software
+can prove the bus works before anything else is debugged.
+
+** VERSION (0x0C)
+
+| Bits  | Name  | Value                                    |
+|-------+-------+------------------------------------------|
+| 31:24 | MAJOR | Incremented on any change that breaks this document |
+| 23:16 | MINOR | New registers or bits, old software still works     |
+| 15:0  | PATCH | Bug fix, no interface change                        |
+
+The value equals the version on the first page of this document.  Software
+must check MAJOR before touching anything else and refuse to run on an
+unknown value.
+
+* Timing contracts
+
+** Bus access
+
+- Writes: address and data are taken together; the response comes one clock
+  later.  One access in flight at a time; a second one waits.
+- Reads: data is latched when the address is accepted and held until the
+  master takes it, so a slow master still sees a coherent value.
+- No access ever stalls longer than 2 clocks.  The bus cannot be locked up
+  by this block (~p_tw_bus_response_within_2~).
+
+** Normal sequence
+
+1. Read STATUS until BUSY=0 and ERR=0.
+2. Write the operands (none in this version; SCRATCH is not an operand).
+3. Write CONTROL with START=1.
+4. Wait for DONE=1 (poll or ~irq~).
+5. Write 1 to STATUS.DONE to clear it, write CONTROL with START=0.
+
+** Latency and throughput
+
+| From                      | To           | Clocks | Enforced by                 |
+|---------------------------+--------------+--------+-----------------------------|
+| START sampled high           | BUSY=1       | 1      | ~p_tw_busy_follows_start~   |
+| START sampled high           | DONE=1       | <= {{max_clocks|256}} | ~p_tw_done_within_max~ |
+| DONE=1                    | BUSY=0       | same clock | ~p_tw_done_not_busy~    |
+| Back-to-back operations   |              | 1 idle clock minimum | ~p_tw_start_gap~ |
+
+** Illegal sequences and what the hardware does
+
+The hardware stays safe whatever software does; these are still violations
+and the monitors flag them in simulation.
+
+| Software does                         | Hardware does                     | Monitor                         |
+|---------------------------------------+-----------------------------------+---------------------------------|
+| START=1 while BUSY=1                  | Ignored, OKAY response            | ~p_tw_no_start_while_busy~      |
+| START=1 while ERR=1                   | Ignored until SOFT_RST            | ~p_tw_no_start_while_err~       |
+| Writes a read-only register           | SLVERR, nothing changes           | ~p_tw_ro_write_slverr~          |
+| SOFT_RST during an operation          | Operation aborted, no DONE, no ERR | ~p_tw_soft_rst_aborts~         |
+| Reads STATUS during an operation      | Coherent snapshot of the same clock |                               |
+
+* Error and recovery
+
+** Error causes
+
+| Cause                              | STATUS.ERR | Operation       | Recovery          |
+|------------------------------------+------------+-----------------+-------------------|
+| Operation exceeded {{max_clocks}} clocks | 1          | Aborted         | SOFT_RST          |
+| Illegal FSM state (SEU, glitch)    | 1          | Aborted         | SOFT_RST          |
+
+** After a software reboot or watchdog reset
+
+The block is not reset when only the CPU restarts, so it may be BUSY, hold
+a stale DONE or an ERR from before the reboot.  Before the first use after
+any software start:
+
+1. Read VERSION; stop if MAJOR is unknown.
+2. Write CONTROL = 0x0000_0002 (SOFT_RST=1), then CONTROL = 0x0000_0000.
+3. Read STATUS: expect BUSY=0, ERR=0, DONE=0.  Otherwise repeat step 2 up to
+   3 times, then declare the hardware faulty.
+
+Skipping this leaves the block in its previous state and the first START is
+silently ignored.  That is by design: the alternative, resetting on a bus
+access, would hide the fault.
+
+* Change control
+
+- Any change to a clause bumps the version in VERSION and in this document
+  (MAJOR when existing software would break).
+- The monitors in ~tb_{{module}}~ change in the same commit as the clause,
+  before the VHDL does.
+- Consumers to notify:
+
+| Consumer           | Uses                          | Contact |
+|--------------------+-------------------------------+---------|
+| Driver             | register map, recovery        |         |
+| Top level          | ports, clocks, constraints    |         |
+
+* Revision history
+
+| Version | Date   | Author   | Change          |
+|---------+--------+----------+-----------------|
+| {{version}} | {{date}} | {{author}} | Initial release |

@@ -1,0 +1,106 @@
+{{!Design review record: scope, checklist (requirements, reset, CDC, tests, constraints), findings, verdict}}
+#+TITLE: Design review: {{module|$stem}}
+{{>header.org}}
+
+* Scope
+
+| Item          | Value                                       |
+|---------------+---------------------------------------------|
+| Reviewed      | ~src/{{module}}.vhd~, ~src/{{module}}_pkg.vhd~, ~tb/tb_{{module}}.vhd~, ~doc_icd~ |
+| Commit        | ~{{commit|0000000}}~                          |
+| Kind          | design review / code review / release review |
+| Author        | {{author}}                                  |
+| Reviewers     |                                             |
+| Date          | {{date}}                                    |
+
+{{_}}
+
+Rules: the reviewer reads the ICD before the code and checks the code
+against it, not the other way round.  Each checklist item is OK, NOK or
+N/A with a note; every NOK becomes a finding with an owner.
+
+* Checklist
+
+** Requirements and interface
+
+| Item                                                              | OK/NOK/NA | Note |
+|-------------------------------------------------------------------+-----------+------|
+| Every requirement the block claims has a row in ~doc_rtm~          |           |      |
+| The entity matches the ICD port table                              |           |      |
+| Every register has a side-effect entry, "none" included            |           |      |
+| VERSION value equals the ICD version                               |           |      |
+| Recovery sequence after a software reboot is written and tested    |           |      |
+
+** Reset and clocks
+
+| Item                                                              | OK/NOK/NA | Note |
+|-------------------------------------------------------------------+-----------+------|
+| One reset strategy: synchronous, active high, ~REG_RESET~          |           |      |
+| Reset and initial values are the same constant                    |           |      |
+| No asynchronous reset on fabric registers                         |           |      |
+| External reset goes through ~reset_sync~                          |           |      |
+| Every clock has a ~create_clock~                                   |           |      |
+
+** Clock domain crossings
+
+| Item                                                              | OK/NOK/NA | Note |
+|-------------------------------------------------------------------+-----------+------|
+| Every crossing is in the HDD table                                 |           |      |
+| Single bits: ~sync_2ff~, source is a register, ~ASYNC_REG~ set     |           |      |
+| Words: ~bus_sync_handshake~ or ~fifo_async~, never per-bit sync     |           |      |
+| Each crossing has its ~set_max_delay~ / ~set_false_path~           |           |      |
+| ~report_cdc~ shows no unconstrained crossing                       |           |      |
+
+** Code
+
+| Item                                                              | OK/NOK/NA | Note |
+|-------------------------------------------------------------------+-----------+------|
+| Two-process style, outputs driven from ~r~ fields                 |           |      |
+| Every ~comb~ variable has a default before it is used             |           |      |
+| ~case~ on the FSM state has an ~others~ that recovers              |           |      |
+| No latches, no combinational loops (synthesis log)                |           |      |
+| Counters and comparisons sized; no off-by-one at the wrap         |           |      |
+| Memories are their own entity and infer as intended               |           |      |
+| ~mark_debug~ and debug code removed, or documented as kept         |           |      |
+
+** Verification
+
+| Item                                                              | OK/NOK/NA | Note |
+|-------------------------------------------------------------------+-----------+------|
+| ~make test~ prints ~TEST PASSED~                                   |           |      |
+| One test case per T requirement, numbered, one sentence each      |           |      |
+| Bad-weather tests: double start, write while busy, reboot         |           |      |
+| A ~p_tw_*~ monitor per ICD clause, fires in its bad-weather test   |           |      |
+| Each test was made to fail once (mutation table filled)           |           |      |
+| Inputs driven after the rising edge, checked on the falling edge  |           |      |
+| Testbench stops itself; ~TEST_TIME~ set                            |           |      |
+
+** Implementation
+
+| Item                                                              | OK/NOK/NA | Note |
+|-------------------------------------------------------------------+-----------+------|
+| Timing met with the release constraints (WNS, THS >= 0)           |           |      |
+| Utilisation within the budget of {{prefix|REQ}}-050                |           |      |
+| I/O constraints: pins, standards, input/output delays             |           |      |
+| Synthesis warnings reviewed, none about this block unexplained    |           |      |
+
+* Findings
+
+| ID   | Severity | Where (file:line, doc section) | Finding | Action | Owner | Due | Closed |
+|------+----------+--------------------------------+---------+--------+-------+-----+--------|
+| F-01 | major    |                                |         |        |       |     |        |
+
+Severity: blocking (no release before fixed), major (fix before merge),
+minor (fix or justify), note (no action).
+
+* Verdict
+
+- [ ] Approved
+- [ ] Approved after the blocking and major findings are closed
+- [ ] Re-review needed
+
+* Revision history
+
+| Version | Date   | Author   | Change          |
+|---------+--------+----------+-----------------|
+| 1.0.0   | {{date}} | {{author}} | Review held     |
