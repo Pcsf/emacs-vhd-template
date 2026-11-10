@@ -1,4 +1,5 @@
-{{!UART receiver, 8N1, mid-bit sampling, framing error flag}}
+{{!UART receiver, 8N1, mid-bit sampling, framing error flag, two-process style}}
+{{+sync_2ff}}
 {{>header.vhd}}
 
 library ieee;
@@ -24,76 +25,108 @@ architecture rtl of {{entity}} is
   constant C_DIV : positive := G_CLK_HZ / G_BAUD;   -- clocks per bit
 
   type state_t is (S_IDLE, S_START, S_DATA, S_STOP);
-  signal state   : state_t := S_IDLE;
-  signal cnt     : natural range 0 to C_DIV - 1 := 0;
-  signal bit_idx : natural range 0 to 7 := 0;
-  signal shreg   : std_logic_vector(7 downto 0) := (others => '0');
-  signal rx_sync : std_logic_vector(1 downto 0) := (others => '1');
 
-  attribute async_reg : string;
-  attribute async_reg of rx_sync : signal is "true";
-  attribute altera_attribute : string;
-  attribute altera_attribute of rx_sync : signal is
-    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
+  type reg_type is record
+    state     : state_t;
+    cnt       : natural range 0 to C_DIV - 1;
+    bit_idx   : natural range 0 to 7;
+    shreg     : std_logic_vector(7 downto 0);
+    data      : std_logic_vector(7 downto 0);
+    valid     : std_logic;
+    frame_err : std_logic;
+  end record reg_type;
+
+  constant REG_RESET : reg_type := (
+    state     => S_IDLE,
+    cnt       => 0,
+    bit_idx   => 0,
+    shreg     => (others => '0'),
+    data      => (others => '0'),
+    valid     => '0',
+    frame_err => '0'
+  );
+
+  signal r, rin : reg_type := REG_RESET;
+  signal rx_s   : std_logic;                    -- rx, synchronous to clk
 
 begin
 
   assert C_DIV >= 4 report "G_CLK_HZ must be at least 4 * G_BAUD" severity failure;
 
-  p_rx : process (clk)
+  -- The asynchronous pin goes through the synchronizer cell before it enters
+  -- the record: the chain has no reset and constraints can find it by name.
+  u_sync_rx : entity work.sync_2ff
+    generic map (G_STAGES => 2, G_INIT => '1')
+    port map (clk => clk, d => rx, q => rx_s);
+
+  comb : process (all)
+    variable v : reg_type;
+  begin
+    v       := r;
+    v.valid := '0';
+
+    case r.state is
+      when S_IDLE =>
+        v.cnt := 0;
+        if rx_s = '0' then                      -- falling edge: start bit
+          v.state := S_START;
+        end if;
+      when S_START =>                           -- middle of the start bit
+        if r.cnt = C_DIV / 2 - 1 then
+          v.cnt := 0;
+          if rx_s = '0' then
+            v.bit_idx := 0;
+            v.state   := S_DATA;
+          else
+            v.state := S_IDLE;                  -- glitch, not a start bit
+          end if;
+        else
+          v.cnt := r.cnt + 1;
+        end if;
+      when S_DATA =>                            -- middle of each data bit
+        if r.cnt = C_DIV - 1 then
+          v.cnt   := 0;
+          v.shreg := rx_s & r.shreg(7 downto 1);   -- LSB first
+          if r.bit_idx = 7 then
+            v.state := S_STOP;
+          else
+            v.bit_idx := r.bit_idx + 1;
+          end if;
+        else
+          v.cnt := r.cnt + 1;
+        end if;
+      when S_STOP =>                            -- middle of the stop bit
+        if r.cnt = C_DIV - 1 then
+          v.cnt       := 0;
+          v.state     := S_IDLE;
+          v.data      := r.shreg;
+          v.valid     := '1';
+          v.frame_err := not rx_s;
+        else
+          v.cnt := r.cnt + 1;
+        end if;
+    end case;
+    {{_}}
+
+    if rst = '1' then                           -- control fields only
+      v.state     := S_IDLE;
+      v.cnt       := 0;
+      v.valid     := '0';
+      v.frame_err := '0';
+    end if;
+
+    rin <= v;
+
+    data      <= r.data;
+    valid     <= r.valid;
+    frame_err <= r.frame_err;
+  end process comb;
+
+  regs : process (clk)
   begin
     if rising_edge(clk) then
-      rx_sync <= rx_sync(0) & rx;
-      valid   <= '0';
-      case state is
-        when S_IDLE =>
-          cnt <= 0;
-          if rx_sync(1) = '0' then              -- falling edge: start bit
-            state <= S_START;
-          end if;
-        when S_START =>                         -- middle of the start bit
-          if cnt = C_DIV / 2 - 1 then
-            cnt <= 0;
-            if rx_sync(1) = '0' then
-              bit_idx <= 0;
-              state   <= S_DATA;
-            else
-              state <= S_IDLE;                  -- glitch, not a start bit
-            end if;
-          else
-            cnt <= cnt + 1;
-          end if;
-        when S_DATA =>                          -- middle of each data bit
-          if cnt = C_DIV - 1 then
-            cnt   <= 0;
-            shreg <= rx_sync(1) & shreg(7 downto 1);   -- LSB first
-            if bit_idx = 7 then
-              state <= S_STOP;
-            else
-              bit_idx <= bit_idx + 1;
-            end if;
-          else
-            cnt <= cnt + 1;
-          end if;
-        when S_STOP =>                          -- middle of the stop bit
-          if cnt = C_DIV - 1 then
-            cnt       <= 0;
-            state     <= S_IDLE;
-            data      <= shreg;
-            valid     <= '1';
-            frame_err <= not rx_sync(1);
-          else
-            cnt <= cnt + 1;
-          end if;
-      end case;
-      if rst = '1' then
-        state     <= S_IDLE;
-        cnt       <= 0;
-        valid     <= '0';
-        frame_err <= '0';
-      end if;
+      r <= rin;
     end if;
-  end process p_rx;
-  {{_}}
+  end process regs;
 
 end architecture rtl;

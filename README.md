@@ -170,7 +170,7 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 | `two_process_skeleton` | The same structure with an empty `comb` process: the RED stub for test-first design (used by `C-c t b`) |
 | `two_process_tb` | Test-first testbench for a two-process block on `tb_util_pkg`: port records, `tc_start` per test case, inputs driven after the rising edge and outputs checked on the falling edge, `TEST PASSED` for `make test` |
 | `package`         | Package and body: constants, types, `clog2` |
-| `fsm`             | State register, next-state process, Moore outputs, recovery from illegal states |
+| `fsm`             | State machine in the two-process style: state and registered Moore outputs in one record, recovery from illegal states |
 | `counter`         | Modulo-N counter with enable and wrap strobe |
 | `edge_detect`     | Rising, falling or any-edge pulse, chosen by a generic |
 | `debounce`        | Button debouncer: input synchronizer plus stability counter, time set in ms |
@@ -246,6 +246,19 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 the box. They are starting points, so edit the port map for your own device
 under test.
 
+The sequencers (`fsm`, `uart_tx`, `uart_rx`, `spi_master`, `spi_slave`,
+`i2c_master`, `i2c_slave`, `axi_lite_regs`, `avalon_mm_regs`, `axis_skid`)
+are written in the two-process style of `two_process`: every flip-flop is a
+field of one `reg_type` record, all logic is in `comb`, and `regs` only
+clocks `rin` into `r`. Their ports stay flat, since they are leaf blocks
+wired by signal name. Reset covers the control fields only; data registers
+keep their value. An asynchronous pin (`rx`, `miso`, the SPI slave and I2C
+lines) enters through a `sync_2ff` instance before it reaches the record,
+so those five templates need `sync_2ff` in the project: creating one of
+them offers to create it. The simpler blocks (counter, PWM, LFSR) and the
+ones a tool must recognise (RAM, ROM, shift register, DSP, synchronizers)
+keep the one-process form.
+
 `project_mk` and `vivado_build` are project files, not VHDL. Use
 `C-c t n`, then type the file name (`project.mk`, `build.tcl`).
 
@@ -278,6 +291,11 @@ The `doc_*` templates are Org files for the paperwork that keeps a block
 honest: the contract with the software team, the requirements it is tested
 against, and the records that show it was. They live in the repository next
 to the VHDL, so they are diffed, reviewed and versioned with it.
+
+New to interface contracts? Read
+[doc/firmware-systems-engineering.md](doc/firmware-systems-engineering.md)
+first: the method in five steps, the vocabulary (ICD clause, side effect,
+tripwire monitor, bad weather) and tips for applying it.
 
 `C-c t d` (`M-x vhdl-tpl-new-docs`) asks for the project root and the block
 name, then for each remaining question once, and writes the set:
@@ -529,8 +547,10 @@ Single braces such as `{ PACKAGE_PIN ... }` in XDC files are literal.
   `set_clock_groups -asynchronous`).
 - **Vendor attributes.** Every synchronizer chain carries both `async_reg`
   (Xilinx) and `SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS` (Intel).
-  `ram_style`, `mark_debug` and `fsm_encoding` are Xilinx; their Intel
-  equivalents are in comments next to them.
+  The protocol blocks get theirs from the `sync_2ff` cell they instantiate,
+  whose chain has no reset, so a constraint can name the cell.
+  `ram_style` and `mark_debug` are Xilinx; their Intel equivalents are in
+  comments next to them.
 
 ### Simulating with GHDL
 
@@ -636,6 +656,7 @@ templates/      whole-file templates (VHDL, constraints, scripts, Org documents)
 snippets/       fragments
 partials/       shared pieces (file headers, Org keywords)
 examples/       the documents filled in for an imaginary block
+doc/            background on the method behind the document templates
 test/           ERT tests, render script, functional testbenches
 Makefile        make check
 ```

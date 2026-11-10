@@ -1,4 +1,4 @@
-{{!AXI4-Lite slave with a small register map (control, status, scratch, version)}}
+{{!AXI4-Lite slave register bank: control, status, scratch, version; two-process style}}
 {{>header.vhd}}
 
 -- Register map (32-bit registers, byte addresses):
@@ -60,94 +60,120 @@ architecture rtl of {{entity}} is
   constant C_REG_SCRATCH : natural := 2;
   constant C_REG_VERSION : natural := 3;
 
-  signal control_r : std_logic_vector(31 downto 0) := (others => '0');
-  signal scratch_r : std_logic_vector(31 downto 0) := (others => '0');
+  type reg_type is record
+    control : std_logic_vector(31 downto 0);
+    scratch : std_logic_vector(31 downto 0);
+    awready : std_logic;
+    wready  : std_logic;
+    bvalid  : std_logic;
+    bresp   : std_logic_vector(1 downto 0);
+    arready : std_logic;
+    rvalid  : std_logic;
+    rdata   : std_logic_vector(31 downto 0);
+  end record reg_type;
 
-  signal awready_r : std_logic := '0';
-  signal wready_r  : std_logic := '0';
-  signal bvalid_r  : std_logic := '0';
-  signal bresp_r   : std_logic_vector(1 downto 0) := C_OKAY;
-  signal arready_r : std_logic := '0';
-  signal rvalid_r  : std_logic := '0';
-  signal rdata_r   : std_logic_vector(31 downto 0) := (others => '0');
+  constant REG_RESET : reg_type := (
+    control => (others => '0'),
+    scratch => (others => '0'),
+    awready => '0',
+    wready  => '0',
+    bvalid  => '0',
+    bresp   => C_OKAY,
+    arready => '0',
+    rvalid  => '0',
+    rdata   => (others => '0')
+  );
+
+  signal r, rin : reg_type := REG_RESET;
 
 begin
 
-  s_axi_awready <= awready_r;
-  s_axi_wready  <= wready_r;
-  s_axi_bvalid  <= bvalid_r;
-  s_axi_bresp   <= bresp_r;
-  s_axi_arready <= arready_r;
-  s_axi_rvalid  <= rvalid_r;
-  s_axi_rdata   <= rdata_r;
-  s_axi_rresp   <= C_OKAY;
-  control       <= control_r;
+  comb : process (all)
+    variable v      : reg_type;
+    variable wr_go  : boolean;
+    variable rd_go  : boolean;
+    variable wr_reg : natural range 0 to 3;
+    variable rd_reg : natural range 0 to 3;
+  begin
+    v      := r;
+    wr_reg := to_integer(unsigned(s_axi_awaddr(3 downto 2)));
+    rd_reg := to_integer(unsigned(s_axi_araddr(3 downto 2)));
+    wr_go  := s_axi_awvalid = '1' and s_axi_wvalid = '1'
+              and r.awready = '0' and r.bvalid = '0';
+    rd_go  := s_axi_arvalid = '1' and r.arready = '0' and r.rvalid = '0';
 
-  p_axi : process (aclk)
-    variable wr_go : boolean;
-    variable rd_go : boolean;
-    variable index : natural range 0 to 3;
+    -- Write: take address and data together, answer one clock later.
+    v.awready := '0';
+    v.wready  := '0';
+    if wr_go then
+      v.awready := '1';
+      v.wready  := '1';
+      v.bvalid  := '1';
+      v.bresp   := C_OKAY;
+      case wr_reg is
+        when C_REG_CONTROL =>
+          for i in 0 to 3 loop
+            if s_axi_wstrb(i) = '1' then
+              v.control(8 * i + 7 downto 8 * i) := s_axi_wdata(8 * i + 7 downto 8 * i);
+            end if;
+          end loop;
+        when C_REG_SCRATCH =>
+          for i in 0 to 3 loop
+            if s_axi_wstrb(i) = '1' then
+              v.scratch(8 * i + 7 downto 8 * i) := s_axi_wdata(8 * i + 7 downto 8 * i);
+            end if;
+          end loop;
+        when others =>
+          v.bresp := C_SLVERR;                  -- read-only register
+      end case;
+    elsif s_axi_bready = '1' then
+      v.bvalid := '0';
+    end if;
+
+    -- Read: latch the data, hold it until the master takes it.
+    v.arready := '0';
+    if rd_go then
+      v.arready := '1';
+      v.rvalid  := '1';
+      case rd_reg is
+        when C_REG_CONTROL => v.rdata := r.control;
+        when C_REG_STATUS  => v.rdata := status;
+        when C_REG_SCRATCH => v.rdata := r.scratch;
+        when others        => v.rdata := G_VERSION;
+      end case;
+    elsif s_axi_rready = '1' then
+      v.rvalid := '0';
+    end if;
+    {{_}}
+
+    if aresetn = '0' then                       -- everything but response and read data
+      v.control := (others => '0');
+      v.scratch := (others => '0');
+      v.awready := '0';
+      v.wready  := '0';
+      v.bvalid  := '0';
+      v.arready := '0';
+      v.rvalid  := '0';
+    end if;
+
+    rin <= v;
+
+    s_axi_awready <= r.awready;
+    s_axi_wready  <= r.wready;
+    s_axi_bvalid  <= r.bvalid;
+    s_axi_bresp   <= r.bresp;
+    s_axi_arready <= r.arready;
+    s_axi_rvalid  <= r.rvalid;
+    s_axi_rdata   <= r.rdata;
+    s_axi_rresp   <= C_OKAY;
+    control       <= r.control;
+  end process comb;
+
+  regs : process (aclk)
   begin
     if rising_edge(aclk) then
-      -- Write: take address and data together, answer one clock later.
-      awready_r <= '0';
-      wready_r  <= '0';
-      wr_go := s_axi_awvalid = '1' and s_axi_wvalid = '1'
-               and awready_r = '0' and bvalid_r = '0';
-      if wr_go then
-        awready_r <= '1';
-        wready_r  <= '1';
-        bvalid_r  <= '1';
-        bresp_r   <= C_OKAY;
-        index := to_integer(unsigned(s_axi_awaddr(3 downto 2)));
-        case index is
-          when C_REG_CONTROL =>
-            for i in 0 to 3 loop
-              if s_axi_wstrb(i) = '1' then
-                control_r(8 * i + 7 downto 8 * i) <= s_axi_wdata(8 * i + 7 downto 8 * i);
-              end if;
-            end loop;
-          when C_REG_SCRATCH =>
-            for i in 0 to 3 loop
-              if s_axi_wstrb(i) = '1' then
-                scratch_r(8 * i + 7 downto 8 * i) <= s_axi_wdata(8 * i + 7 downto 8 * i);
-              end if;
-            end loop;
-          when others =>
-            bresp_r <= C_SLVERR;                -- read-only register
-        end case;
-      elsif s_axi_bready = '1' then
-        bvalid_r <= '0';
-      end if;
-
-      -- Read: latch the data, hold it until the master takes it.
-      arready_r <= '0';
-      rd_go := s_axi_arvalid = '1' and arready_r = '0' and rvalid_r = '0';
-      if rd_go then
-        arready_r <= '1';
-        rvalid_r  <= '1';
-        index := to_integer(unsigned(s_axi_araddr(3 downto 2)));
-        case index is
-          when C_REG_CONTROL => rdata_r <= control_r;
-          when C_REG_STATUS  => rdata_r <= status;
-          when C_REG_SCRATCH => rdata_r <= scratch_r;
-          when others        => rdata_r <= G_VERSION;
-        end case;
-      elsif s_axi_rready = '1' then
-        rvalid_r <= '0';
-      end if;
-
-      if aresetn = '0' then
-        control_r <= (others => '0');
-        scratch_r <= (others => '0');
-        awready_r <= '0';
-        wready_r  <= '0';
-        bvalid_r  <= '0';
-        arready_r <= '0';
-        rvalid_r  <= '0';
-      end if;
+      r <= rin;
     end if;
-  end process p_axi;
-  {{_}}
+  end process regs;
 
 end architecture rtl;

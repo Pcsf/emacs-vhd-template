@@ -1,4 +1,4 @@
-{{!Finite state machine: state register + next-state process, Moore outputs}}
+{{!Finite state machine, two-process style: state and registered Moore outputs in one record}}
 {{>header.vhd}}
 
 library ieee;
@@ -18,46 +18,67 @@ end entity {{entity}};
 architecture rtl of {{entity}} is
 
   type state_t is (S_IDLE, S_BUSY, S_DONE);
-  signal state, next_state : state_t := S_IDLE;
 
-  -- Vivado: force an encoding with
-  --   attribute fsm_encoding : string;
-  --   attribute fsm_encoding of state : signal is "one_hot";
+  type reg_type is record
+    state : state_t;
+    busy  : std_logic;
+    done  : std_logic;
+  end record reg_type;
+
+  constant REG_RESET : reg_type := (
+    state => S_IDLE,
+    busy  => '0',
+    done  => '0'
+  );
+
+  -- To force a state encoding use the synthesis options (Vivado
+  -- -fsm_extraction, Quartus State Machine Processing): there is no separate
+  -- state signal to put an attribute on.
+  signal r, rin : reg_type := REG_RESET;
 
 begin
 
-  p_state : process (clk)
+  comb : process (all)
+    variable v : reg_type;
   begin
-    if rising_edge(clk) then
-      if rst = '1' then
-        state <= S_IDLE;
-      else
-        state <= next_state;
-      end if;
-    end if;
-  end process p_state;
+    v := r;                           -- default: stay in the current state
 
-  p_next : process (all)
-  begin
-    next_state <= state;              -- default: stay in the current state
-    case state is
+    case r.state is
       when S_IDLE =>
         if start = '1' then
-          next_state <= S_BUSY;
+          v.state := S_BUSY;
         end if;
       when S_BUSY =>
         if finished = '1' then
-          next_state <= S_DONE;
+          v.state := S_DONE;
         end if;
       when S_DONE =>
-        next_state <= S_IDLE;
+        v.state := S_IDLE;
       when others =>                  -- recover from illegal states
-        next_state <= S_IDLE;
+        v.state := S_IDLE;
     end case;
     {{_}}
-  end process p_next;
 
-  busy <= '1' when state = S_BUSY else '0';
-  done <= '1' when state = S_DONE else '0';
+    -- Moore outputs, decoded from the next state and registered: they change
+    -- in the same clock as the state and come straight from a flip-flop.
+    v.busy := '1' when v.state = S_BUSY else '0';
+    v.done := '1' when v.state = S_DONE else '0';
+
+    if rst = '1' then                 -- synchronous reset: last, so it wins
+      v := REG_RESET;
+    end if;
+
+    rin <= v;
+
+    busy <= r.busy;
+    done <= r.done;
+  end process comb;
+
+  regs : process (clk)
+  begin
+    if rising_edge(clk) then
+      r <= rin;
+    end if;
+  end process regs;
 
 end architecture rtl;

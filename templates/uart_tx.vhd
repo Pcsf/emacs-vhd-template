@@ -1,4 +1,4 @@
-{{!UART transmitter, 8N1, valid/ready handshake}}
+{{!UART transmitter, 8N1, valid/ready handshake, two-process style}}
 {{>header.vhd}}
 
 library ieee;
@@ -24,69 +24,95 @@ architecture rtl of {{entity}} is
   constant C_DIV : positive := G_CLK_HZ / G_BAUD;   -- clocks per bit
 
   type state_t is (S_IDLE, S_START, S_DATA, S_STOP);
-  signal state   : state_t := S_IDLE;
-  signal cnt     : natural range 0 to C_DIV - 1 := 0;
-  signal bit_idx : natural range 0 to 7 := 0;
-  signal shreg   : std_logic_vector(7 downto 0) := (others => '0');
-  signal tx_r    : std_logic := '1';
+
+  type reg_type is record
+    state   : state_t;
+    cnt     : natural range 0 to C_DIV - 1;
+    bit_idx : natural range 0 to 7;
+    shreg   : std_logic_vector(7 downto 0);
+    tx      : std_logic;
+  end record reg_type;
+
+  constant REG_RESET : reg_type := (
+    state   => S_IDLE,
+    cnt     => 0,
+    bit_idx => 0,
+    shreg   => (others => '0'),
+    tx      => '1'
+  );
+
+  signal r, rin : reg_type := REG_RESET;
 
 begin
 
   assert C_DIV >= 2 report "G_CLK_HZ must be at least 2 * G_BAUD" severity failure;
 
-  p_tx : process (clk)
+  comb : process (all)
+    variable v        : reg_type;
+    variable bit_done : boolean;                -- last clock of the current bit
+  begin
+    v        := r;
+    bit_done := r.cnt = C_DIV - 1;
+
+    -- tx follows the state one clock late, which gives every bit the same
+    -- length of C_DIV clocks.
+    case r.state is
+      when S_IDLE =>
+        v.tx  := '1';
+        v.cnt := 0;
+        if valid = '1' then
+          v.shreg := data;
+          v.state := S_START;
+        end if;
+      when S_START =>
+        v.tx := '0';
+        if bit_done then
+          v.cnt     := 0;
+          v.bit_idx := 0;
+          v.state   := S_DATA;
+        else
+          v.cnt := r.cnt + 1;
+        end if;
+      when S_DATA =>
+        v.tx := r.shreg(r.bit_idx);             -- LSB first
+        if bit_done then
+          v.cnt := 0;
+          if r.bit_idx = 7 then
+            v.state := S_STOP;
+          else
+            v.bit_idx := r.bit_idx + 1;
+          end if;
+        else
+          v.cnt := r.cnt + 1;
+        end if;
+      when S_STOP =>
+        v.tx := '1';
+        if bit_done then
+          v.cnt   := 0;
+          v.state := S_IDLE;
+        else
+          v.cnt := r.cnt + 1;
+        end if;
+    end case;
+    {{_}}
+
+    if rst = '1' then                           -- control fields only
+      v.state := S_IDLE;
+      v.tx    := '1';
+      v.cnt   := 0;
+    end if;
+
+    rin <= v;
+
+    ready <= '1' when r.state = S_IDLE else '0';
+    tx    <= r.tx;
+  end process comb;
+
+  regs : process (clk)
   begin
     if rising_edge(clk) then
-      -- tx_r follows the state one clock late, which gives every bit the
-      -- same length of C_DIV clocks.
-      case state is
-        when S_IDLE =>
-          tx_r <= '1';
-          cnt  <= 0;
-          if valid = '1' then
-            shreg <= data;
-            state <= S_START;
-          end if;
-        when S_START =>
-          tx_r <= '0';
-          if cnt = C_DIV - 1 then
-            cnt     <= 0;
-            bit_idx <= 0;
-            state   <= S_DATA;
-          else
-            cnt <= cnt + 1;
-          end if;
-        when S_DATA =>
-          tx_r <= shreg(bit_idx);               -- LSB first
-          if cnt = C_DIV - 1 then
-            cnt <= 0;
-            if bit_idx = 7 then
-              state <= S_STOP;
-            else
-              bit_idx <= bit_idx + 1;
-            end if;
-          else
-            cnt <= cnt + 1;
-          end if;
-        when S_STOP =>
-          tx_r <= '1';
-          if cnt = C_DIV - 1 then
-            cnt   <= 0;
-            state <= S_IDLE;
-          else
-            cnt <= cnt + 1;
-          end if;
-      end case;
-      if rst = '1' then
-        state <= S_IDLE;
-        tx_r  <= '1';
-        cnt   <= 0;
-      end if;
+      r <= rin;
     end if;
-  end process p_tx;
-
-  ready <= '1' when state = S_IDLE else '0';
-  tx    <= tx_r;
-  {{_}}
+  end process regs;
 
 end architecture rtl;

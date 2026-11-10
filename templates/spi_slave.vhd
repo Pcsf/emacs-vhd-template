@@ -1,4 +1,5 @@
-{{!SPI slave (any mode, MSB or LSB first, any word width), runs on the system clock}}
+{{!SPI slave on the system clock: any mode, any width, MSB or LSB first; two-process style}}
+{{+sync_2ff}}
 {{>header.vhd}}
 
 -- The three SPI inputs are synchronized to `clk` and their edges are detected
@@ -50,44 +51,51 @@ end entity {{entity}};
 
 architecture rtl of {{entity}} is
 
-  -- q(1) is the synchronized value, q(2) the one before it.
-  signal sclk_q : std_logic_vector(2 downto 0) := (others => G_CPOL);
-  signal cs_q   : std_logic_vector(2 downto 0) := (others => '1');
-  signal mosi_q : std_logic_vector(1 downto 0) := (others => '0');
+  type reg_type is record
+    sclk_d   : std_logic;                               -- sclk_s one clock ago
+    cs_d     : std_logic;                               -- cs_s one clock ago
+    tx_sh    : std_logic_vector(G_WIDTH - 1 downto 0);
+    rx_sh    : std_logic_vector(G_WIDTH - 1 downto 0);
+    rx_data  : std_logic_vector(G_WIDTH - 1 downto 0);
+    rx_valid : std_logic;
+    miso     : std_logic;
+    bit_cnt  : natural range 0 to G_WIDTH;
+  end record reg_type;
 
-  attribute async_reg : string;
-  attribute async_reg of sclk_q : signal is "true";
-  attribute async_reg of cs_q   : signal is "true";
-  attribute async_reg of mosi_q : signal is "true";
-  attribute altera_attribute : string;
-  attribute altera_attribute of sclk_q : signal is
-    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
-  attribute altera_attribute of cs_q   : signal is
-    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
-  attribute altera_attribute of mosi_q : signal is
-    "-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
+  constant REG_RESET : reg_type := (
+    sclk_d   => G_CPOL,
+    cs_d     => '1',
+    tx_sh    => (others => '0'),
+    rx_sh    => (others => '0'),
+    rx_data  => (others => '0'),
+    rx_valid => '0',
+    miso     => '0',
+    bit_cnt  => 0
+  );
 
-  signal tx_sh   : std_logic_vector(G_WIDTH - 1 downto 0) := (others => '0');
-  signal rx_sh   : std_logic_vector(G_WIDTH - 1 downto 0) := (others => '0');
-  signal miso_r  : std_logic := '0';
-  signal bit_cnt : natural range 0 to G_WIDTH := 0;
+  signal r, rin : reg_type := REG_RESET;
 
-  function reverse (v : std_logic_vector) return std_logic_vector is
-    variable r : std_logic_vector(v'range);
+  -- The SPI pins, synchronous to clk.
+  signal sclk_s : std_logic;
+  signal cs_s   : std_logic;
+  signal mosi_s : std_logic;
+
+  function reverse (word : std_logic_vector) return std_logic_vector is
+    variable result : std_logic_vector(word'range);
   begin
-    for i in v'range loop
-      r(v'high - (i - v'low)) := v(i);
+    for i in word'range loop
+      result(word'high - (i - word'low)) := word(i);
     end loop;
-    return r;
+    return result;
   end function reverse;
 
   -- The shift register is MSB first; LSB-first words are reversed on the way in and out.
-  function wire_order (v : std_logic_vector; msb_first : boolean) return std_logic_vector is
+  function wire_order (word : std_logic_vector; msb_first : boolean) return std_logic_vector is
   begin
     if msb_first then
-      return v;
+      return word;
     else
-      return reverse(v);
+      return reverse(word);
     end if;
   end function wire_order;
 
@@ -95,71 +103,91 @@ begin
 
   assert G_WIDTH >= 2 report "G_WIDTH must be at least 2" severity failure;
 
-  p_spi : process (clk)
-    variable v_edge      : boolean;
-    variable v_leading   : boolean;
-    variable v_load      : std_logic_vector(G_WIDTH - 1 downto 0);
-    variable v_rx_next   : std_logic_vector(G_WIDTH - 1 downto 0);
+  -- The pins go through synchronizer cells before they enter the record: the
+  -- chains have no reset and constraints can find them by name.
+  u_sync_sclk : entity work.sync_2ff
+    generic map (G_STAGES => 2, G_INIT => G_CPOL)
+    port map (clk => clk, d => sclk, q => sclk_s);
+
+  u_sync_cs : entity work.sync_2ff
+    generic map (G_STAGES => 2, G_INIT => '1')
+    port map (clk => clk, d => cs_n, q => cs_s);
+
+  u_sync_mosi : entity work.sync_2ff
+    generic map (G_STAGES => 2, G_INIT => '0')
+    port map (clk => clk, d => mosi, q => mosi_s);
+
+  comb : process (all)
+    variable v       : reg_type;
+    variable edge    : boolean;                         -- SCLK changed
+    variable leading : boolean;                         -- ... away from its idle level
+    variable load    : std_logic_vector(G_WIDTH - 1 downto 0);
+    variable rx_next : std_logic_vector(G_WIDTH - 1 downto 0);
   begin
-    if rising_edge(clk) then
-      sclk_q   <= sclk_q(1 downto 0) & sclk;
-      cs_q     <= cs_q(1 downto 0) & cs_n;
-      mosi_q   <= mosi_q(0) & mosi;
-      rx_valid <= '0';
+    v          := r;
+    edge       := sclk_s /= r.sclk_d;
+    leading    := edge and sclk_s /= G_CPOL;
+    load       := wire_order(tx_data, G_MSB_FIRST);
+    rx_next    := r.rx_sh(G_WIDTH - 2 downto 0) & mosi_s;
+    v.sclk_d   := sclk_s;
+    v.cs_d     := cs_s;
+    v.rx_valid := '0';
 
-      v_edge    := sclk_q(1) /= sclk_q(2);
-      v_leading := v_edge and sclk_q(1) /= G_CPOL;   -- left the idle level
-
-      if cs_q(1) = '1' then
-        -- Not selected.
-        miso_r  <= '0';
-        bit_cnt <= 0;
-      elsif cs_q(2) = '1' then
-        -- CS just fell: load the word.
-        v_load  := wire_order(tx_data, G_MSB_FIRST);
-        bit_cnt <= 0;
-        if G_CPHA = '0' then
-          miso_r <= v_load(G_WIDTH - 1);              -- first bit before the first edge
-          tx_sh  <= v_load(G_WIDTH - 2 downto 0) & '0';
-        else
-          tx_sh  <= v_load;                           -- first bit on the leading edge
-        end if;
-      elsif v_edge then
-        if v_leading = (G_CPHA = '0') then
-          -- Sampling edge.
-          if bit_cnt < G_WIDTH then
-            v_rx_next := rx_sh(G_WIDTH - 2 downto 0) & mosi_q(1);
-            rx_sh     <= v_rx_next;
-            bit_cnt   <= bit_cnt + 1;
-            if bit_cnt = G_WIDTH - 1 then
-              rx_data  <= wire_order(v_rx_next, G_MSB_FIRST);
-              rx_valid <= '1';
-            end if;
-          end if;
-        else
-          -- Shifting edge.
-          miso_r <= tx_sh(G_WIDTH - 1);
-          tx_sh  <= tx_sh(G_WIDTH - 2 downto 0) & '0';
-        end if;
+    if cs_s = '1' then
+      -- Not selected.
+      v.miso    := '0';
+      v.bit_cnt := 0;
+    elsif r.cs_d = '1' then
+      -- CS just fell: load the word.
+      v.bit_cnt := 0;
+      if G_CPHA = '0' then
+        v.miso  := load(G_WIDTH - 1);                   -- first bit before the first edge
+        v.tx_sh := load(G_WIDTH - 2 downto 0) & '0';
+      else
+        v.tx_sh := load;                                -- first bit on the leading edge
       end if;
-
-      if rst = '1' then
-        miso_r   <= '0';
-        bit_cnt  <= 0;
-        rx_valid <= '0';
+    elsif edge then
+      if leading = (G_CPHA = '0') then
+        -- Sampling edge.
+        if r.bit_cnt < G_WIDTH then
+          v.rx_sh   := rx_next;
+          v.bit_cnt := r.bit_cnt + 1;
+          if r.bit_cnt = G_WIDTH - 1 then
+            v.rx_data  := wire_order(rx_next, G_MSB_FIRST);
+            v.rx_valid := '1';
+          end if;
+        end if;
+      else
+        -- Shifting edge.
+        v.miso  := r.tx_sh(G_WIDTH - 1);
+        v.tx_sh := r.tx_sh(G_WIDTH - 2 downto 0) & '0';
       end if;
     end if;
-  end process p_spi;
+    {{_}}
 
-  gen_tristate : if G_MISO_TRISTATE generate
-    miso <= miso_r when cs_q(1) = '0' else 'Z';
-  end generate gen_tristate;
+    if rst = '1' then                                   -- control fields only
+      v.miso     := '0';
+      v.bit_cnt  := 0;
+      v.rx_valid := '0';
+    end if;
 
-  gen_driven : if not G_MISO_TRISTATE generate
-    miso <= miso_r;
-  end generate gen_driven;
+    rin <= v;
 
-  active <= not cs_q(1);
-  {{_}}
+    if G_MISO_TRISTATE and cs_s = '1' then
+      miso <= 'Z';                                      -- not selected
+    else
+      miso <= r.miso;
+    end if;
+    rx_data  <= r.rx_data;
+    rx_valid <= r.rx_valid;
+    active   <= not cs_s;
+  end process comb;
+
+  regs : process (clk)
+  begin
+    if rising_edge(clk) then
+      r <= rin;
+    end if;
+  end process regs;
 
 end architecture rtl;
