@@ -78,9 +78,9 @@
 :CUSTOM_ID: monitors
 :END:
 
-# Independent processes in the testbench, one per ICD clause and named after
-# it (p_tw_<clause>).  A monitor that never fires in a bad-weather test is a
-# monitor that does not work.
+# Tripwire monitors: independent processes in the testbench, one per ICD
+# clause and named after it (p_tw_<clause>, tw for tripwire).  A monitor
+# that never fires in a bad-weather test is a monitor that does not work.
 
 | Monitor | ICD clause | Fires in |
 |---------+------------+----------|

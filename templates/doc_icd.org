@@ -129,8 +129,9 @@
 :CUSTOM_ID: latency
 :END:
 
-# "Enforced by" names the testbench monitor of the clause: a process called
-# p_tw_<clause> that drives nothing and stops the simulation on a violation.
+# "Enforced by" names the tripwire monitor of the clause: a testbench
+# process called p_tw_<clause> (tw for tripwire) that drives nothing and
+# stops the simulation on a violation.
 
 | From | To | Clocks | Enforced by |
 |------+----+--------+-------------|
