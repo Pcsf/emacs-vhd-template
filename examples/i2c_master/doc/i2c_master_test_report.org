@@ -14,28 +14,28 @@ Simulation of ~i2c_master~ at unit level, as planned in the
 [[file:i2c_master_vplan.org::#test-cases][verification plan]].  The static checks and the hardware test were not
 run, so this report covers the behaviour in simulation and nothing else.
 
-| Item           | Result                                                     |
-|----------------+------------------------------------------------------------|
-| Overall        | PASS WITH DEVIATIONS                                       |
-| Test cases     | 20 passed, 0 failed, 0 not run of 20                       |
-| Open anomalies | 6, none blocking for simulation; AN-06 before any hardware |
-| Recommendation | not for release: static, hardware and review are open      |
+| Item           | Result                                                |
+|----------------+-------------------------------------------------------|
+| Overall        | PASS WITH DEVIATIONS                                  |
+| Test cases     | 20 passed, 0 failed, 0 not run of 20                  |
+| Open anomalies | 5, none blocking for simulation; AN-06 is closed      |
+| Recommendation | not for release: static, hardware and review are open |
 
 * Configuration under test
 :PROPERTIES:
 :CUSTOM_ID: configuration
 :END:
 
-| Item           | Value                                                     |
-|----------------+-----------------------------------------------------------|
-| Block          | ~i2c_master~, ICD version 1.0.0                           |
-| Git commit     | ~21aaf16~, working tree not clean (example not committed) |
-| Generics       | ~G_CLK_HZ~ = 3200, ~G_SCL_HZ~ = 100 (C_Q = 8)             |
-| Simulator      | GHDL 6.0.0, mcode code generator, ~--std=08~              |
-| Synthesis tool | none: not run                                             |
-| Device         | none                                                      |
-| Plan           | [[file:i2c_master_vplan.org::#test-cases][i2c_master verification plan]], version 1.0.0               |
-| Run by / on    | Pcsf, 2026-11-10                                          |
+| Item           | Value                                                          |
+|----------------+----------------------------------------------------------------|
+| Block          | ~i2c_master~, ICD version 1.1.0                                |
+| Git commit     | ~0418ca1~, working tree not clean (design and example changed) |
+| Generics       | ~G_CLK_HZ~ = 3200, ~G_SCL_HZ~ = 100 (C_Q = 8)                  |
+| Simulator      | GHDL 6.0.0, mcode code generator, ~--std=08~                   |
+| Synthesis tool | none: not run                                                  |
+| Device         | none                                                           |
+| Plan           | [[file:i2c_master_vplan.org::#test-cases][i2c_master verification plan]], version 1.1.0                    |
+| Run by / on    | Pcsf, 2026-11-10                                               |
 
 Command, as in the [[file:i2c_master_vplan.org::#environment][environment of the plan]]:
 
@@ -46,12 +46,25 @@ ghdl -r --std=08 --workdir=$W tb_i2c_master --stop-time=1sec
 End of the log:
 
 #+BEGIN_EXAMPLE
-   219705 ns  tb_i2c_master: ==== final report
-   219705 ns  tb_i2c_master:   warning: 0
-   219705 ns  tb_i2c_master:   error: 13
-   219705 ns  tb_i2c_master:   failure: 0
-   219705 ns  tb_i2c_master:   test cases with alerts: TC-10 TC-11 TC-12 TC-13 TC-14 TC-15 TC-16 TC-17 TC-18 TC-19 TC-20
-   219705 ns  tb_i2c_master: TEST PASSED
+    95865 ns  tb_i2c_master: error: [TC-10] [icd#cmd-stable] command changed or withdrawn before it was taken
+   106075 ns  tb_i2c_master: error: [TC-11] [icd#cmd-rd-wr] command with cmd_read and cmd_write both set
+   109665 ns  tb_i2c_master: error: [TC-12] [icd#cmd-empty] command with nothing to do
+   110375 ns  tb_i2c_master: error: [TC-13] [icd#stop-idle] STOP asked for with no transaction open
+   111085 ns  tb_i2c_master: error: [TC-14] [icd#start-stop-empty] START and STOP in one command without a byte
+   112485 ns  tb_i2c_master: error: [TC-15] [icd#byte-no-start] byte asked for with no transaction open
+   115655 ns  tb_i2c_master: error: [TC-15] [icd#stop-idle] STOP asked for with no transaction open
+   125515 ns  tb_i2c_master: error: [TC-16] [icd#rst-while-busy] rst in the middle of a command
+   131415 ns  tb_i2c_master: error: [TC-16] [icd#rst-while-busy] rst in the middle of a command
+   142555 ns  tb_i2c_master: error: [TC-17] [icd#cmd-in-reset] cmd_valid high while rst is high
+   150985 ns  tb_i2c_master: error: [TC-18] [icd#rst-while-busy] rst in the middle of a command
+   170005 ns  tb_i2c_master: error: [TC-19] [icd#rst-while-busy] rst in the middle of a command
+   217515 ns  tb_i2c_master: error: [TC-20] [icd#rst-while-busy] rst in the middle of a command
+   225465 ns  tb_i2c_master: ==== final report
+   225465 ns  tb_i2c_master:   warning: 0
+   225465 ns  tb_i2c_master:   error: 13
+   225465 ns  tb_i2c_master:   failure: 0
+   225465 ns  tb_i2c_master:   test cases with alerts: TC-10 TC-11 TC-12 TC-13 TC-14 TC-15 TC-16 TC-17 TC-18 TC-19 TC-20
+   225465 ns  tb_i2c_master: TEST PASSED
 #+END_EXAMPLE
 
 * Results
@@ -92,7 +105,7 @@ fired the monitor of its clause and no other: 13 error alerts, all
 announced (TC-10 to TC-14 one each, TC-15 two, TC-16 two, TC-17 to TC-20
 one each).
 
-Mutation checks: all 23 mutants of ~tb/mutants.txt~ changed the design,
+Mutation checks: all 26 mutants of ~tb/mutants.txt~ changed the design,
 made the run end with ~TEST FAILED~ and a non-zero exit code, and left the
 text named in the list in the log.  None survived.
 
@@ -100,7 +113,8 @@ Other runs: the testbench also passed with its clock constant set for
 C_Q = 2, 16 and 32, and elaboration stopped as intended for C_Q = 1.
 
 Measured in [[file:i2c_master_vplan.org::#TC-09][TC-09]], in clocks at C_Q = 8: SCL low 16, SCL high 18, SCL
-period 34, START hold 8, STOP setup 10, STOP to START 10.
+period 34, START hold 16, repeated START setup 18, STOP setup 18, STOP to
+START 18.
 
 * Static results
 :PROPERTIES:
@@ -134,18 +148,21 @@ warning.
 :END:
 
 No test failed.  These are behaviours the tests brought out that a user
-of the block would not expect.  The VHDL was not changed; each is written
+of the block would not expect.  AN-06 was fixed in the design: START hold,
+repeated START setup, STOP setup and the bus free time are now two quarter
+periods, and four monitors and five mutants guard them.  For the others
+the VHDL was not changed; each is written
 into the [[file:i2c_master_icd.org::#limitations][limitations of the ICD]] and is an [[file:i2c_master_srs.org::#open-points][open point]] where a
 decision is needed.  Severity is the tester's proposal.
 
-| ID    | TC    | Description                                           | Severity | Disposition: ICD clause           |
-|-------+-------+-------------------------------------------------------+----------+-----------------------------------|
-| AN-01 | [[file:i2c_master_vplan.org::#TC-14][TC-14]] | START and STOP without a byte: STOP dropped           | low      | [[file:i2c_master_icd.org::#start-stop-empty][start-stop-empty]]                  |
-| AN-02 | [[file:i2c_master_vplan.org::#TC-15][TC-15]] | Byte without START leaves SCL low                     | low      | [[file:i2c_master_icd.org::#byte-no-start][byte-no-start]]                     |
-| AN-03 | [[file:i2c_master_vplan.org::#TC-17][TC-17]] | Command offered during ~rst~ is lost                  | low      | [[file:i2c_master_icd.org::#cmd-in-reset][cmd-in-reset]]                      |
-| AN-04 | [[file:i2c_master_vplan.org::#TC-19][TC-19]] | SDA held low is not noticed, transfer lost            | major    | [[file:i2c_master_icd.org::#recovery][recovery]]                          |
-| AN-05 | [[file:i2c_master_vplan.org::#TC-20][TC-20]] | No timeout on clock stretching                        | low      | [[file:i2c_master_icd.org::#stretching][stretching]]                        |
-| AN-06 | [[file:i2c_master_vplan.org::#TC-09][TC-09]] | START and STOP timing below the Standard-mode minimum | major    | [[file:i2c_master_icd.org::#spec-timing][comparison with the specification]] |
+| ID    | TC    | Description                                  | Severity | Disposition: ICD clause         |
+|-------+-------+----------------------------------------------+----------+---------------------------------|
+| AN-01 | [[file:i2c_master_vplan.org::#TC-14][TC-14]] | START and STOP without a byte: STOP dropped  | low      | [[file:i2c_master_icd.org::#start-stop-empty][start-stop-empty]]                |
+| AN-02 | [[file:i2c_master_vplan.org::#TC-15][TC-15]] | Byte without START leaves SCL low            | low      | [[file:i2c_master_icd.org::#byte-no-start][byte-no-start]]                   |
+| AN-03 | [[file:i2c_master_vplan.org::#TC-17][TC-17]] | Command offered during ~rst~ is lost         | low      | [[file:i2c_master_icd.org::#cmd-in-reset][cmd-in-reset]]                    |
+| AN-04 | [[file:i2c_master_vplan.org::#TC-19][TC-19]] | SDA held low is not noticed, transfer lost   | major    | [[file:i2c_master_icd.org::#recovery][recovery]]                        |
+| AN-05 | [[file:i2c_master_vplan.org::#TC-20][TC-20]] | No timeout on clock stretching               | low      | [[file:i2c_master_icd.org::#stretching][stretching]]                      |
+| AN-06 | [[file:i2c_master_vplan.org::#TC-09][TC-09]] | START and STOP timing was one quarter period | closed   | fixed in the design: [[file:i2c_master_icd.org::#spec-timing][comparison]] |
 
 Severity: blocking (release held), major (fix or decide before the next
 release), low (noted).
@@ -157,8 +174,6 @@ release), low (noted).
 
 - Static level not run: no synthesis tool was used for this example.
 - Hardware level not run: no board.
-- The mutation checks were run with a copy of ~test/run-example.sh~ that
-  writes to a scratch directory, not through ~make examples~.
 
 * Sign-off
 :PROPERTIES:
@@ -172,6 +187,7 @@ release), low (noted).
 
 * Revision history
 
-| Version |       Date | Author | Change        |
-|---------+------------+--------+---------------|
-|   1.0.0 | 2026-11-10 | Pcsf   | Initial issue |
+| Version |       Date | Author | Change                                                        |
+|---------+------------+--------+---------------------------------------------------------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial issue                                                 |
+|   1.1.0 | 2026-11-10 | Pcsf   | Run again on the design with the longer START and STOP timing |

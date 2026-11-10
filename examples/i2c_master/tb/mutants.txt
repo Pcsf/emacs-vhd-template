@@ -1,11 +1,16 @@
 # name|sed expression applied to src/i2c_master.vhd|text the failing run's log must contain
 #
-# One mutant for each monitor that no bad-weather test fires.
+# One mutant for each monitor that no bad-weather test fires.  The five
+# start_* / stop_* / bus_free ones put back a wait of one quarter period
+# where the design waits two.
 sda_change|/when S_BYTE =>/,/when S_STOP =>/s/v.step := 3;/v.step := 3; v.sda_oe := '1';/|[icd#sda-change]
 scl_low|/when S_BYTE =>/,/when S_STOP =>/s/v.step := 1;/v.step := 1; v.scl_oe := '0';/|[icd#scl-low]
 scl_high|/when S_BYTE =>/,/when S_STOP =>/s/v.step := 3;/v.step := 3; v.timer := 0;/|[icd#scl-high]
-start_timing|/when S_START =>/,/when S_BYTE =>/s/v.step   := 3;/v.step   := 3; v.timer := 0;/|[icd#start-timing]
-stop_timing|/when S_STOP =>/,/when S_DONE =>/s/v.scl_oe := '0';/v.scl_oe := '0'; v.sda_oe := '0';/|[icd#stop-timing]
+start_setup|/when S_START =>/,/when S_BYTE =>/s/v.step   := 2;/v.step   := 3;/|[icd#start-setup]
+start_hold|/when S_IDLE =>/,/when S_START =>/s/v.step   := 4;/v.step   := 5;/|[icd#start-hold]
+start_hold_repeated|/when S_START =>/,/when S_BYTE =>/s/v.step   := 4;/v.step   := 5;/|[TC-05] [icd#start-hold]
+stop_setup|/when S_STOP =>/,/when S_DONE =>/s/v.step   := 2;/v.step   := 3;/|[icd#stop-setup]
+bus_free|/when S_STOP =>/,/when S_DONE =>/s/v.step   := 4;/v.step   := 5;/|[icd#bus-free]
 sda_setup|/when S_BYTE =>/,/when S_STOP =>/s/v.scl_oe := '0';/v.scl_oe := '0'; v.sda_oe := not r.sda_oe;/|[icd#sda-setup]
 sda_hold|/when S_BYTE =>/,/when S_STOP =>/s/v.step := 4;/v.step := 4; v.timer := 0;/|[icd#sda-hold]
 stretch_wait|s/if r.scl_oe = '0' and scl_s = '0' then/if false then/|[icd#stretch-wait]

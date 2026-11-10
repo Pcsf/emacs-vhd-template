@@ -25,7 +25,7 @@ seen in simulation with the testbench generics (C_Q = 8, see
 says so.
 
 - Block :: ~src/i2c_master.vhd~, with ~src/sync_2ff.vhd~
-- Version :: 1.0.0
+- Version :: 1.1.0
 - Requirements :: [[file:i2c_master_srs.org::#requirements][i2c_master requirements]]
 - Design :: [[file:i2c_master_hdd.org::#overview][i2c_master design description]]
 - Enforced by :: ~tb/tb_i2c_master.vhd~; the ~p_tw_*~ processes named below
@@ -263,10 +263,10 @@ the "high" side only.
 | SCL period inside a byte           | 4 * C_Q + 2 |                34 | 10.02 us (99.8 kHz)     |
 | SDA setup before SCL rises         | >= C_Q      |                   | 2.50 us                 |
 | SDA hold after SCL falls           | >= C_Q      |                   | 2.50 us                 |
-| START: SDA low before SCL falls    | >= C_Q      |                 8 | 2.50 us                 |
-| Repeated START: SCL high before it | >= C_Q      |                10 | 2.52 us                 |
-| STOP: SCL high before SDA rises    | >= C_Q      |                10 | 2.52 us                 |
-| STOP to the next START             | >= C_Q      |                10 | 2.52 us                 |
+| START: SDA low before SCL falls    | >= 2 * C_Q  |                16 | 5.00 us                 |
+| Repeated START: SCL high before it | >= 2 * C_Q  |                18 | 5.02 us                 |
+| STOP: SCL high before SDA rises    | >= 2 * C_Q  |                18 | 5.02 us                 |
+| STOP to the next START             | >= 2 * C_Q  |                18 | 5.02 us                 |
 
 - The column for the default generics (C_Q = 250) is calculated, not
   simulated.
@@ -279,9 +279,12 @@ the "high" side only.
   command is already waiting (26 measured in [[file:i2c_master_vplan.org::#TC-08][TC-08]]), and for as long as
   software takes otherwise.
 - START hold, the setup of a repeated START and of a STOP, and the time
-  from a STOP to the next START are one quarter period, half of the SCL low
-  time.  At 100 kHz that is below the Standard-mode minimum of the I2C
-  specification: see [[#spec-timing][Comparison with the I2C specification]].
+  from a STOP to the next START are two quarter periods each, as long as
+  the SCL low time.  The measured 18 is 2 * C_Q plus the 2 clocks of the
+  synchronizer, or, for STOP to START, plus the 2 clocks the block needs to
+  take a command that is already waiting.
+- How these numbers compare with the I2C specification is in
+  [[#spec-timing][Comparison with the I2C specification]].
 
 *** Comparison with the I2C specification
 :PROPERTIES:
@@ -289,31 +292,50 @@ the "high" side only.
 :END:
 
 Minimum times of the I2C-bus specification (NXP UM10204, Rev. 7.0,
-1 October 2021, Table 11) against what the block makes with the default
-generics (100 MHz, 100 kHz, C_Q = 250).  The block's values are the
-calculated column of the table above.
+1 October 2021, Table 11) against what the block makes at its pins.  All
+values of the block in this section are calculated from the formulas of
+the table above, with a 10 ns clock; none was simulated at these
+generics.  Rise and fall times of the line are not in them: a slow rising
+edge takes time from the high phase as a slave sees it, and the board has
+to account for that.
+
+Standard-mode, default generics (100 MHz, 100 kHz, C_Q = 250):
 
 | Symbol  | Meaning                 | Standard-mode min | This block | Met |
 |---------+-------------------------+-------------------+------------+-----|
 | tLOW    | SCL low                 | 4.7 us            | 5.00 us    | yes |
 | tHIGH   | SCL high                | 4.0 us            | 5.02 us    | yes |
-| tHD;STA | START hold              | 4.0 us            | 2.50 us    | no  |
-| tSU;STA | repeated START setup    | 4.7 us            | 2.52 us    | no  |
-| tSU;STO | STOP setup              | 4.0 us            | 2.52 us    | no  |
-| tBUF    | bus free, STOP to START | 4.7 us            | 2.52 us    | no  |
+| tHD;STA | START hold              | 4.0 us            | 5.00 us    | yes |
+| tSU;STA | repeated START setup    | 4.7 us            | 5.02 us    | yes |
+| tSU;STO | STOP setup              | 4.0 us            | 5.02 us    | yes |
+| tBUF    | bus free, STOP to START | 4.7 us            | 5.02 us    | yes |
 | tSU;DAT | data setup              | 250 ns            | 2.50 us    | yes |
 
-The four START and STOP times are about half of what Standard-mode asks
-for.  The slave model of the testbench does not check them, so every test
-passes.  A real Standard-mode device is entitled to miss such a START or
-STOP.  Until the block is changed, the only setting that meets all four at
-a 100 kHz device is a slower clock: ~G_SCL_HZ~ of 50 000 or less gives
-C_Q >= 500 and 5.0 us for each of them.  That workaround is calculated from
-the formulas, not simulated.
+All seven are met at 100 kHz.  The block guarantees 2 * C_Q clocks, 5.00
+us, for each of the four START and STOP times; the table shows what it
+makes.
 
-The same comparison for Fast-mode (minimums 0.6 us for tHD;STA, tSU;STA
-and tSU;STO, 1.3 us for tLOW and tBUF) was not worked out for this
-document.
+Fast-mode, 100 MHz and ~G_SCL_HZ~ = 400 000 (C_Q = 62, SCL period 250
+clocks, exactly 400 kHz):
+
+| Symbol  | Meaning                 | Fast-mode min | This block | Met |
+|---------+-------------------------+---------------+------------+-----|
+| tLOW    | SCL low                 | 1.3 us        | 1.24 us    | no  |
+| tHIGH   | SCL high                | 0.6 us        | 1.26 us    | yes |
+| tHD;STA | START hold              | 0.6 us        | 1.24 us    | yes |
+| tSU;STA | repeated START setup    | 0.6 us        | 1.26 us    | yes |
+| tSU;STO | STOP setup              | 0.6 us        | 1.26 us    | yes |
+| tBUF    | bus free, STOP to START | 1.3 us        | 1.26 us    | no  |
+| tSU;DAT | data setup              | 100 ns        | 0.62 us    | yes |
+
+A symmetric SCL at exactly 400 kHz does not meet tLOW and tBUF: Fast-mode
+asks for a low time longer than half the period, and the block makes low
+and high from the same quarter.  Both are 2 * C_Q clocks at least, so
+they are met when C_Q >= 65 at 100 MHz.  That is ~G_SCL_HZ~ of 384 615 or
+less: it gives C_Q = 65, tLOW = 1.30 us (the minimum itself, no margin),
+tBUF = 1.32 us and an SCL of 381.7 kHz.  ~G_SCL_HZ~ = 350 000 gives C_Q =
+71, 1.42 us for both and 349.7 kHz.  For another clock frequency the rule
+is the same: 2 * C_Q clock periods must be at least 1.3 us.
 
 *** scl-low: SCL is held low for at least 2 * C_Q clocks
 :PROPERTIES:
@@ -359,23 +381,42 @@ The release of both lines by ~rst~ is the exception.
 Enforced by ~p_tw_sda_change~; the START and STOP on the bus are counted
 in every test case from [[file:i2c_master_vplan.org::#TC-02][TC-02]] on.
 
-*** start-timing: setup and hold of a START
+*** start-setup: SCL is high 2 * C_Q clocks before a START
 :PROPERTIES:
-:CUSTOM_ID: start-timing
+:CUSTOM_ID: start-setup
 :END:
 
 The master pulls SDA low for a START only after SCL has been high and SDA
-released for at least C_Q clocks, and pulls SCL low no earlier than C_Q
-clocks after that.  Enforced by ~p_tw_start_timing~, measured in [[file:i2c_master_vplan.org::#TC-09][TC-09]].
+released for at least 2 * C_Q clocks.  For a repeated START this is the
+setup time; on an idle bus both lines have been high since the STOP
+([[#bus-free][bus-free]]).  Enforced by ~p_tw_start_setup~, measured in [[file:i2c_master_vplan.org::#TC-09][TC-09]].
 
-*** stop-timing: setup of a STOP and the time after it
+*** start-hold: SCL stays high 2 * C_Q clocks after a START
 :PROPERTIES:
-:CUSTOM_ID: stop-timing
+:CUSTOM_ID: start-hold
+:END:
+
+After it has pulled SDA low for a START or a repeated START, the master
+pulls SCL low no earlier than 2 * C_Q clocks later.
+Enforced by ~p_tw_start_hold~, measured in [[file:i2c_master_vplan.org::#TC-09][TC-09]].
+
+*** stop-setup: SCL is high 2 * C_Q clocks before a STOP
+:PROPERTIES:
+:CUSTOM_ID: stop-setup
 :END:
 
 The master releases SDA for a STOP only after SCL has been high for at
-least C_Q clocks, and drives neither line again for at least C_Q clocks.
-Enforced by ~p_tw_stop_timing~, measured in [[file:i2c_master_vplan.org::#TC-09][TC-09]].
+least 2 * C_Q clocks.  Enforced by ~p_tw_stop_setup~, measured in [[file:i2c_master_vplan.org::#TC-09][TC-09]].
+
+*** bus-free: the bus is left alone 2 * C_Q clocks after a STOP
+:PROPERTIES:
+:CUSTOM_ID: bus-free
+:END:
+
+After a STOP the master drives neither line for at least 2 * C_Q clocks.
+The block spends this time before it answers the command, so the next
+command cannot shorten it.  Enforced by ~p_tw_bus_free~, measured in
+[[file:i2c_master_vplan.org::#TC-09][TC-09]].
 
 ** Clock stretching
 :PROPERTIES:
@@ -443,14 +484,17 @@ line is still low (rise time, stretching).
 | Part of the command                | Clocks        | C_Q = 8 | Default generics |
 |------------------------------------+---------------+---------+------------------|
 | Always                             | 2             |       2 | 20 ns            |
-| START, no transaction open         | 2 * C_Q       |      16 | 5.00 us          |
-| START, transaction open (repeated) | 5 * C_Q + 2   |      42 | 12.52 us         |
+| START, no transaction open         | 3 * C_Q       |      24 | 7.50 us          |
+| START, transaction open (repeated) | 7 * C_Q + 2   |      58 | 17.52 us         |
 | Byte, read or write, with its ACK  | 37 * C_Q + 18 |     314 | 92.68 us         |
-| STOP                               | 3 * C_Q + 2   |      26 | 7.52 us          |
+| STOP                               | 5 * C_Q + 2   |      42 | 12.52 us         |
 
 A byte alone takes 37 * C_Q + 20 clocks (316 at C_Q = 8), so the block
-moves at most G_CLK_HZ / (37 * C_Q + 20) bytes per second: about 10.8
-thousand with the default generics.  The testbench compares every response
+moves at most G_CLK_HZ / (37 * C_Q + 20) bytes per second inside a
+transfer: about 10.8 thousand with the default generics.  A whole transfer
+adds its START and STOP: writing one byte (address, data, STOP) takes
+82 * C_Q + 42 clocks, 698 at C_Q = 8 and 205.4 us with the default
+generics.  The testbench compares every response
 with this table, exactly; [[file:i2c_master_vplan.org::#TC-06][TC-06]] also counts the START, the byte and the
 STOP on their own.  Enforced by ~p_tw_cmd_latency~.
 
@@ -667,10 +711,13 @@ changed for any of them.
 - A byte without START leaves SCL low in a state that a STOP command does
   not end: [[#byte-no-start][byte-no-start]].
 - ~rst~ in a transfer makes no STOP: [[#rst-release][rst-release]].
-- START hold, repeated START setup, STOP setup and the time from STOP to
-  START are one quarter period.  At 100 kHz that is 2.5 us, below the
-  Standard-mode minimum of 4.0 to 4.7 us:
+- Fast-mode at exactly 400 kHz is not met: SCL low and the bus free time
+  are below 1.3 us.  A lower ~G_SCL_HZ~ meets them:
   [[#spec-timing][Comparison with the I2C specification]].
+- A START command taken in the first clocks after ~rst~ is made at once.
+  When ~rst~ cut a transfer short, the time the lines were high before
+  that START can then be shorter than 2 * C_Q clocks (read from the VHDL,
+  not simulated: the tests wait before the next command).
 - SCL is not exactly ~G_SCL_HZ~: the period is 4 * C_Q + 2 clocks plus the
   rise time of the line.
 - A write is not compared with the line: the block does not notice when
@@ -697,6 +744,7 @@ changed for any of them.
 
 * Revision history
 
-| Version |       Date | Author | Change          |
-|---------+------------+--------+-----------------|
-|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |
+| Version |       Date | Author | Change                                                 |
+|---------+------------+--------+--------------------------------------------------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release                                        |
+|   1.1.0 | 2026-11-10 | Pcsf   | START and STOP timing lengthened to half an SCL period |

@@ -14,7 +14,7 @@ How ~i2c_master~ is built and why, well enough that someone else can change
 it without breaking the ICD.  The boundary (ports, commands, timing seen
 from outside) is in the ICD and is not repeated here.
 
-- Version :: 1.0.0
+- Version :: 1.1.0
 - Requirements :: [[file:i2c_master_srs.org::#requirements][i2c_master requirements]]
 - Interface :: [[file:i2c_master_icd.org::#scope][i2c_master ICD]]
 
@@ -111,7 +111,7 @@ within the same clock.
 | ~reg_type~ field |      Width |  Start | By rst | Purpose                                    |
 |------------------+------------+--------+--------+--------------------------------------------|
 | ~state~          |       enum | S_IDLE | yes    | State of the [[#fsm][control FSM]]                   |
-| ~step~           |        0-4 |      0 | no     | Position inside a state, one per quarter   |
+| ~step~           |        0-6 |      0 | no     | Position inside a state, one per quarter   |
 | ~bit_idx~        |        0-8 |      0 | no     | Bit of the byte: 0-7 data, 8 acknowledge   |
 | ~timer~          | 0 to C_Q-1 |      0 | no     | [[#timer][Quarter timer]]                              |
 | ~bus_active~     |          1 |      0 | yes    | A transaction is open                      |
@@ -142,8 +142,8 @@ within the same clock.
 |         |                       | ~cmd_valid~ with read or write, no start | S_BYTE  |
 |         |                       | ~cmd_valid~ with stop only, ~bus_active~ | S_STOP  |
 |         |                       | ~cmd_valid~ with anything else           | S_DONE  |
-| S_START | START, repeated START | step 4, command has a byte               | S_BYTE  |
-|         |                       | step 4, command has no byte              | S_DONE  |
+| S_START | START, repeated START | step 6, command has a byte               | S_BYTE  |
+|         |                       | step 6, command has no byte              | S_DONE  |
 | S_BYTE  | Eight bits and ACK    | step 4, ~do_stop~                        | S_STOP  |
 |         |                       | step 4, no ~do_stop~                     | S_DONE  |
 | S_STOP  | STOP                  | last step                                | S_DONE  |
@@ -156,17 +156,22 @@ each step does when it is left:
 |---------+------+--------------------------------------------------------------------|
 | S_START |    0 | Release SDA (SCL is low).  Entry for a repeated START              |
 |         |    1 | Release SCL                                                        |
-|         |    2 | Pull SDA low: the START                                            |
-|         |    3 | Pull SCL low.  Entry on an idle bus, with SDA pulled low on entry  |
-|         |    4 | Set ~bus_active~, go on                                            |
+|         |    2 | Nothing: second quarter of the setup time                          |
+|         |    3 | Pull SDA low: the START                                            |
+|         |    4 | Nothing: second quarter of the hold time.  Entry on an idle bus,   |
+|         |      | with SDA pulled low on entry                                       |
+|         |    5 | Pull SCL low                                                       |
+|         |    6 | Set ~bus_active~, go on                                            |
 | S_BYTE  |    0 | Put the bit on SDA: data or ACK for a write or read, see [[#datapath][datapath]]  |
 |         |    1 | Release SCL                                                        |
 |         |    2 | Nothing: first half of SCL high                                    |
 |         |    3 | Pull SCL low and take SDA.  Next bit at step 0, after bit 8 step 4 |
 |         |    4 | One quarter with SCL low, then S_STOP (SDA pulled low) or S_DONE   |
 | S_STOP  |    1 | Release SCL.  SDA was pulled low on entry                          |
-|         |    2 | Release SDA: the STOP                                              |
-|         |    3 | Clear ~bus_active~, go on                                          |
+|         |    2 | Nothing: second quarter of the setup time                          |
+|         |    3 | Release SDA: the STOP                                              |
+|         |    4 | Nothing: first quarter of the bus free time                        |
+|         |    5 | Second quarter of the bus free time, clear ~bus_active~, go on     |
 
 - S_IDLE loads the command fields and the timer in the clock that takes
   the command, and makes the first bus change of the command in the same
@@ -174,6 +179,10 @@ each step does when it is left:
 - S_DONE sets ~rsp_valid~ and copies ~rx_sh~ to ~rsp_data~ and ~ack_err~ to
   ~rsp_nack~.  ~rx_sh~ is not cleared between commands, which is why a
   command without a read returns the byte read last.
+- START hold, the setup of a repeated START and of a STOP, and the bus
+  free time after a STOP are two steps each, so two quarter periods.  The
+  bus free time is spent inside S_STOP, before the response, so it holds
+  whenever the next command comes.
 - A command with start and stop but no byte leaves S_START for S_DONE:
   ~do_stop~ is looked at only at the end of S_BYTE.
 - A byte without START on an idle bus goes through S_BYTE without
@@ -270,6 +279,7 @@ stated ([[file:i2c_master_srs.org::#open-points][open point OP-5]]).
 
 * Revision history
 
-| Version |       Date | Author | Change          |
-|---------+------------+--------+-----------------|
-|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |
+| Version |       Date | Author | Change                                                 |
+|---------+------------+--------+--------------------------------------------------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release                                        |
+|   1.1.0 | 2026-11-10 | Pcsf   | START and STOP timing lengthened to half an SCL period |

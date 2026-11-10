@@ -16,7 +16,7 @@ is released.  Every requirement with method T has a numbered test case
 here, every ICD clause a monitor, and every monitor and good-weather test
 has been made to fail once.
 
-- Version :: 1.0.0
+- Version :: 1.1.0
 - Items under test :: ~src/i2c_master.vhd~, ~src/sync_2ff.vhd~
 - Requirements :: [[file:i2c_master_srs.org::#requirements][i2c_master requirements]]
 - Interface :: [[file:i2c_master_icd.org::#scope][i2c_master ICD]]
@@ -323,35 +323,37 @@ ready while the line is still low.
 
 Independent processes in ~tb_i2c_master~ that drive nothing.  Each watches
 one ICD clause and raises an error alert tagged ~[icd#<id>]~ with the ID of
-the clause.  The first fourteen watch what the hardware promises; they
+the clause.  The first sixteen watch what the hardware promises; they
 must stay silent in every test, so each is shown to fire by a mutant of the
 design.  The last eight watch what software owes; each fires in the
 bad-weather test that breaks its clause, exactly once per violation.
 
-| Monitor                 | ICD clause       | Fires in                           |
-|-------------------------+------------------+------------------------------------|
-| ~p_tw_sda_change~       | [[file:i2c_master_icd.org::#sda-change][sda-change]]       | mutant ~sda_change~                |
-| ~p_tw_scl_low~          | [[file:i2c_master_icd.org::#scl-low][scl-low]]          | mutant ~scl_low~                   |
-| ~p_tw_scl_high~         | [[file:i2c_master_icd.org::#scl-high][scl-high]]         | mutant ~scl_high~                  |
-| ~p_tw_start_timing~     | [[file:i2c_master_icd.org::#start-timing][start-timing]]     | mutant ~start_timing~              |
-| ~p_tw_stop_timing~      | [[file:i2c_master_icd.org::#stop-timing][stop-timing]]      | mutant ~stop_timing~               |
-| ~p_tw_sda_setup~        | [[file:i2c_master_icd.org::#sda-setup][sda-setup]]        | mutant ~sda_setup~                 |
-| ~p_tw_sda_hold~         | [[file:i2c_master_icd.org::#sda-hold][sda-hold]]         | mutant ~sda_hold~                  |
-| ~p_tw_stretch_wait~     | [[file:i2c_master_icd.org::#stretch-wait][stretch-wait]]     | mutant ~stretch_wait~              |
-| ~p_tw_rst_release~      | [[file:i2c_master_icd.org::#rst-release][rst-release]]      | mutant ~rst_release~               |
-| ~p_tw_rsp_pulse~        | [[file:i2c_master_icd.org::#rsp-pulse][rsp-pulse]]        | mutant ~rsp_pulse~                 |
-| ~p_tw_rsp_per_cmd~      | [[file:i2c_master_icd.org::#rsp-per-cmd][rsp-per-cmd]]      | mutant ~rsp_per_cmd~               |
-| ~p_tw_ready_busy~       | [[file:i2c_master_icd.org::#ready-busy][ready-busy]]       | mutant ~ready_busy~                |
-| ~p_tw_rsp_stable~       | [[file:i2c_master_icd.org::#rsp-stable][rsp-stable]]       | mutant ~rsp_stable~                |
-| ~p_tw_cmd_latency~      | [[file:i2c_master_icd.org::#cmd-latency][cmd-latency]]      | mutant ~cmd_latency~               |
-| ~p_tw_cmd_stable~       | [[file:i2c_master_icd.org::#cmd-stable][cmd-stable]]       | TC-10                              |
-| ~p_tw_cmd_rd_wr~        | [[file:i2c_master_icd.org::#cmd-rd-wr][cmd-rd-wr]]        | TC-11                              |
-| ~p_tw_cmd_empty~        | [[file:i2c_master_icd.org::#cmd-empty][cmd-empty]]        | TC-12                              |
-| ~p_tw_stop_idle~        | [[file:i2c_master_icd.org::#stop-idle][stop-idle]]        | TC-13, TC-15                       |
-| ~p_tw_start_stop_empty~ | [[file:i2c_master_icd.org::#start-stop-empty][start-stop-empty]] | TC-14                              |
-| ~p_tw_byte_no_start~    | [[file:i2c_master_icd.org::#byte-no-start][byte-no-start]]    | TC-15                              |
-| ~p_tw_cmd_in_reset~     | [[file:i2c_master_icd.org::#cmd-in-reset][cmd-in-reset]]     | TC-17                              |
-| ~p_tw_rst_while_busy~   | [[file:i2c_master_icd.org::#rst-while-busy][rst-while-busy]]   | TC-16 (twice), TC-18, TC-19, TC-20 |
+| Monitor                 | ICD clause       | Fires in                                    |
+|-------------------------+------------------+---------------------------------------------|
+| ~p_tw_sda_change~       | [[file:i2c_master_icd.org::#sda-change][sda-change]]       | mutant ~sda_change~                         |
+| ~p_tw_scl_low~          | [[file:i2c_master_icd.org::#scl-low][scl-low]]          | mutant ~scl_low~                            |
+| ~p_tw_scl_high~         | [[file:i2c_master_icd.org::#scl-high][scl-high]]         | mutant ~scl_high~                           |
+| ~p_tw_start_setup~      | [[file:i2c_master_icd.org::#start-setup][start-setup]]      | mutant ~start_setup~                        |
+| ~p_tw_start_hold~       | [[file:i2c_master_icd.org::#start-hold][start-hold]]       | mutants ~start_hold~, ~start_hold_repeated~ |
+| ~p_tw_stop_setup~       | [[file:i2c_master_icd.org::#stop-setup][stop-setup]]       | mutant ~stop_setup~                         |
+| ~p_tw_bus_free~         | [[file:i2c_master_icd.org::#bus-free][bus-free]]         | mutant ~bus_free~                           |
+| ~p_tw_sda_setup~        | [[file:i2c_master_icd.org::#sda-setup][sda-setup]]        | mutant ~sda_setup~                          |
+| ~p_tw_sda_hold~         | [[file:i2c_master_icd.org::#sda-hold][sda-hold]]         | mutant ~sda_hold~                           |
+| ~p_tw_stretch_wait~     | [[file:i2c_master_icd.org::#stretch-wait][stretch-wait]]     | mutant ~stretch_wait~                       |
+| ~p_tw_rst_release~      | [[file:i2c_master_icd.org::#rst-release][rst-release]]      | mutant ~rst_release~                        |
+| ~p_tw_rsp_pulse~        | [[file:i2c_master_icd.org::#rsp-pulse][rsp-pulse]]        | mutant ~rsp_pulse~                          |
+| ~p_tw_rsp_per_cmd~      | [[file:i2c_master_icd.org::#rsp-per-cmd][rsp-per-cmd]]      | mutant ~rsp_per_cmd~                        |
+| ~p_tw_ready_busy~       | [[file:i2c_master_icd.org::#ready-busy][ready-busy]]       | mutant ~ready_busy~                         |
+| ~p_tw_rsp_stable~       | [[file:i2c_master_icd.org::#rsp-stable][rsp-stable]]       | mutant ~rsp_stable~                         |
+| ~p_tw_cmd_latency~      | [[file:i2c_master_icd.org::#cmd-latency][cmd-latency]]      | mutant ~cmd_latency~                        |
+| ~p_tw_cmd_stable~       | [[file:i2c_master_icd.org::#cmd-stable][cmd-stable]]       | TC-10                                       |
+| ~p_tw_cmd_rd_wr~        | [[file:i2c_master_icd.org::#cmd-rd-wr][cmd-rd-wr]]        | TC-11                                       |
+| ~p_tw_cmd_empty~        | [[file:i2c_master_icd.org::#cmd-empty][cmd-empty]]        | TC-12                                       |
+| ~p_tw_stop_idle~        | [[file:i2c_master_icd.org::#stop-idle][stop-idle]]        | TC-13, TC-15                                |
+| ~p_tw_start_stop_empty~ | [[file:i2c_master_icd.org::#start-stop-empty][start-stop-empty]] | TC-14                                       |
+| ~p_tw_byte_no_start~    | [[file:i2c_master_icd.org::#byte-no-start][byte-no-start]]    | TC-15                                       |
+| ~p_tw_cmd_in_reset~     | [[file:i2c_master_icd.org::#cmd-in-reset][cmd-in-reset]]     | TC-17                                       |
+| ~p_tw_rst_while_busy~   | [[file:i2c_master_icd.org::#rst-while-busy][rst-while-busy]]   | TC-16 (twice), TC-18, TC-19, TC-20          |
 
 * Mutation checks
 :PROPERTIES:
@@ -361,9 +363,11 @@ bad-weather test that breaks its clause, exactly once per violation.
 A monitor or a test that has never failed has not shown it can.  Each line
 of ~tb/mutants.txt~ is a ~sed~ expression that breaks ~src/i2c_master.vhd~
 in one place; the testbench is run against the broken copy and must fail,
-with the text of the last column in its log.  The first fourteen are for
-the monitors that no bad-weather test fires, the others for the
-good-weather test cases.  ~test/run-example.sh i2c_master~ runs them all
+with the named text in its log.  The first seventeen are for the monitors
+that no bad-weather test fires, the others for the good-weather test
+cases.  Five of them put back a wait of one quarter period where the
+design waits two, so the START and STOP timing of the
+[[file:i2c_master_icd.org::#spec-timing][comparison with the I2C specification]] cannot be lost unnoticed.  ~test/run-example.sh i2c_master~ runs them all
 and also refuses a mutant whose expression changes nothing.
 
 | Mutant                | Change to the design                       | Log must contain                                 | Failed |
@@ -371,8 +375,11 @@ and also refuses a mutant whose expression changes nothing.
 | ~sda_change~          | SDA pulled low in the middle of SCL high   | ~[icd#sda-change]~                               | yes    |
 | ~scl_low~             | Release SCL one quarter early              | ~[icd#scl-low]~                                  | yes    |
 | ~scl_high~            | Second half of SCL high cut to one clock   | ~[icd#scl-high]~                                 | yes    |
-| ~start_timing~        | SCL low one clock after a repeated START   | ~[icd#start-timing]~                             | yes    |
-| ~stop_timing~         | STOP: SDA released together with SCL       | ~[icd#stop-timing]~                              | yes    |
+| ~start_setup~         | Repeated START setup one quarter, not two  | ~[icd#start-setup]~                              | yes    |
+| ~start_hold~          | START hold one quarter on an idle bus      | ~[icd#start-hold]~                               | yes    |
+| ~start_hold_repeated~ | Repeated START hold one quarter            | ~[TC-05] [icd#start-hold]~                       | yes    |
+| ~stop_setup~          | STOP setup one quarter, not two            | ~[icd#stop-setup]~                               | yes    |
+| ~bus_free~            | Bus free time one quarter, not two         | ~[icd#bus-free]~                                 | yes    |
 | ~sda_setup~           | SDA changed in the clock that releases SCL | ~[icd#sda-setup]~                                | yes    |
 | ~sda_hold~            | SDA changed one clock after SCL fell       | ~[icd#sda-hold]~                                 | yes    |
 | ~stretch_wait~        | Remove the wait for SCL to be high         | ~[icd#stretch-wait]~                             | yes    |
@@ -429,6 +436,7 @@ it is the only one.
 
 * Revision history
 
-| Version |       Date | Author | Change          |
-|---------+------------+--------+-----------------|
-|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |
+| Version |       Date | Author | Change                                                 |
+|---------+------------+--------+--------------------------------------------------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release                                        |
+|   1.1.0 | 2026-11-10 | Pcsf   | START and STOP timing lengthened to half an SCL period |

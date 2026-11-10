@@ -56,8 +56,8 @@ what it does with commands it should not get, is in the
 :METHOD:   T
 :TEST:     [[file:i2c_master_vplan.org::#TC-02][TC-02]]
 :DESIGN:   [[file:i2c_master_hdd.org::#fsm][S_START]]
-:ICD:      [[file:i2c_master_icd.org::#start-timing][start-timing]]
-:MONITOR:  p_tw_start_timing
+:ICD:      [[file:i2c_master_icd.org::#start-hold][start-hold]]
+:MONITOR:  p_tw_start_hold
 :RESULT:   PASS
 :STATUS:   verified
 :END:
@@ -72,8 +72,8 @@ what it does with commands it should not get, is in the
 :METHOD:   T
 :TEST:     [[file:i2c_master_vplan.org::#TC-05][TC-05]]
 :DESIGN:   [[file:i2c_master_hdd.org::#fsm][S_START]]
-:ICD:      [[file:i2c_master_icd.org::#cmd-fields][commands]]
-:MONITOR:  p_tw_start_timing
+:ICD:      [[file:i2c_master_icd.org::#start-setup][start-setup]]
+:MONITOR:  p_tw_start_setup
 :RESULT:   PASS
 :STATUS:   verified
 :END:
@@ -121,8 +121,8 @@ what it does with commands it should not get, is in the
 :METHOD:   T
 :TEST:     [[file:i2c_master_vplan.org::#TC-06][TC-06]]
 :DESIGN:   [[file:i2c_master_hdd.org::#fsm][S_STOP]]
-:ICD:      [[file:i2c_master_icd.org::#stop-timing][stop-timing]]
-:MONITOR:  p_tw_stop_timing
+:ICD:      [[file:i2c_master_icd.org::#stop-setup][stop-setup]]
+:MONITOR:  p_tw_stop_setup
 :RESULT:   PASS
 :STATUS:   verified
 :END:
@@ -281,6 +281,24 @@ what it does with commands it should not get, is in the
   has no system budget above it; the number is written down so that a
   later request to make it faster has something to be held against.
 
+*** REQ-043 START and STOP timing
+:PROPERTIES:
+:CUSTOM_ID: REQ-043
+:METHOD:   T
+:TEST:     [[file:i2c_master_vplan.org::#TC-09][TC-09]]
+:DESIGN:   [[file:i2c_master_hdd.org::#fsm][step sequence]]
+:ICD:      [[file:i2c_master_icd.org::#start-setup][start-setup]], [[file:i2c_master_icd.org::#start-hold][start-hold]], [[file:i2c_master_icd.org::#stop-setup][stop-setup]], [[file:i2c_master_icd.org::#bus-free][bus-free]]
+:MONITOR:  p_tw_start_setup, p_tw_start_hold, p_tw_stop_setup, p_tw_bus_free
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: START hold, repeated START setup, STOP setup and the bus free
+  time after a STOP shall each last at least 2 * C_Q clocks.
+- Rationale :: Standard-mode devices need 4.0 to 4.7 us for these four
+  times (NXP UM10204, Rev. 7.0, 1 October 2021, Table 11).  One quarter
+  period is 2.5 us at 100 kHz and too short; two quarters are 5.0 us.  The
+  [[file:i2c_master_icd.org::#spec-timing][comparison in the ICD]] has the numbers.
+
 *** REQ-042 Clock frequency
 :PROPERTIES:
 :CUSTOM_ID: REQ-042
@@ -388,21 +406,22 @@ what it does with commands it should not get, is in the
 :END:
 
 Found while the block was verified.  Each is a question for the owner of
-the block, not a decision.
+the block, not a decision, until its resolution is filled in.
 
-| ID   | Question                                                    | Owner | Due | Resolution                                               |
-|------+-------------------------------------------------------------+-------+-----+----------------------------------------------------------|
-| OP-1 | START hold, STOP setup and STOP to START are one            |       |     | Not enough for Standard-mode at 100 kHz: [[file:i2c_master_icd.org::#spec-timing][ICD, comparison]] |
-|      | quarter period.  Enough for the devices on the bus?         |       |     | The design is unchanged; a fix is open.                  |
-| OP-2 | ~cmd_ready~ is 1 during ~rst~ and a command is lost then.   |       |     |                                                          |
-|      | Should it read 0?                                           |       |     |                                                          |
-| OP-3 | Clock stretching has no timeout.  Is one needed?            |       |     |                                                          |
-| OP-4 | START and STOP in one command without a byte drop the STOP. |       |     |                                                          |
-|      | Reject, or make both?                                       |       |     |                                                          |
-| OP-5 | No budget is stated for resources and for the byte rate.    |       |     |                                                          |
+| ID   | Question                                                    | Owner | Due | Resolution                        |
+|------+-------------------------------------------------------------+-------+-----+-----------------------------------|
+| OP-1 | START hold, STOP setup and STOP to START were one           |       |     | Closed: two quarters now, [[file:i2c_master_srs.org::#REQ-043][REQ-043]] |
+|      | quarter period, too short for Standard-mode.                |       |     |                                   |
+| OP-2 | ~cmd_ready~ is 1 during ~rst~ and a command is lost then.   |       |     |                                   |
+|      | Should it read 0?                                           |       |     |                                   |
+| OP-3 | Clock stretching has no timeout.  Is one needed?            |       |     |                                   |
+| OP-4 | START and STOP in one command without a byte drop the STOP. |       |     |                                   |
+|      | Reject, or make both?                                       |       |     |                                   |
+| OP-5 | No budget is stated for resources and for the byte rate.    |       |     |                                   |
 
 * Revision history
 
-| Version |       Date | Author | Change          |
-|---------+------------+--------+-----------------|
-|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |
+| Version |       Date | Author | Change                                                 |
+|---------+------------+--------+--------------------------------------------------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release                                        |
+|   1.1.0 | 2026-11-10 | Pcsf   | START and STOP timing lengthened to half an SCL period |

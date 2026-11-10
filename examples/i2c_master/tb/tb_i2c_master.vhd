@@ -38,6 +38,8 @@ architecture sim of tb_i2c_master is
   constant C_SCL_LOW  : positive := 2 * C_Q;
   constant C_SCL_HIGH : positive := 2 * C_Q + C_SYNC;
   constant C_BIT      : positive := C_SCL_LOW + C_SCL_HIGH;
+  -- START setup and hold, STOP setup, bus free time
+  constant C_START_STOP : positive := 2 * C_Q;
 
   constant C_RSP_TIMEOUT : positive := 5000;                     -- clocks
   constant C_SLV_TIMEOUT : time     := 300 us;
@@ -114,16 +116,16 @@ architecture sim of tb_i2c_master is
   begin
     if start then
       if is_open then
-        v_n := v_n + 5 * C_Q + C_SYNC;
+        v_n := v_n + 7 * C_Q + C_SYNC;
       else
-        v_n := v_n + 2 * C_Q;
+        v_n := v_n + 3 * C_Q;
       end if;
     end if;
     if byte then
       v_n := v_n + 9 * C_BIT + C_Q;
     end if;
     if stop and (byte or (is_open and not start)) then
-      v_n := v_n + 3 * C_Q + C_SYNC;
+      v_n := v_n + 5 * C_Q + C_SYNC;
     end if;
     return v_n;
   end function latency;
@@ -367,36 +369,18 @@ begin
     v_scl_oe := scl_oe;
   end process p_tw_scl_high;
 
-  p_tw_start_timing : process
+  p_tw_start_setup : process
     variable v_sda_oe, v_scl : std_logic := '0';
     variable v_rst           : std_logic := '1';
-    variable v_high          : natural := C_Q;   -- clocks SCL has been high
-    variable v_released      : natural := C_Q;   -- clocks sda_oe has been '0'
-    variable v_hold          : natural := 0;
-    variable v_in_hold       : boolean := false;
+    variable v_high          : natural := C_START_STOP;   -- clocks SCL has been high
+    variable v_released      : natural := C_START_STOP;   -- clocks sda_oe has been '0'
   begin
     wait until rising_edge(clk);
-    if rst = '1' then
-      v_in_hold := false;
-    elsif v_in_hold then
-      if scl_oe = '1' then
-        if v_hold < C_Q then
-          alert(ERROR, "[icd#start-timing] SCL pulled low " & to_string(v_hold)
-                & " clocks after the START, at least " & to_string(C_Q) & " promised", C_SCOPE);
-        end if;
-        v_in_hold := false;
-      else
-        v_hold := v_hold + 1;
-      end if;
-    end if;
-    if sda_oe = '1' and v_sda_oe = '0' and v_scl = '1' and scl_x = '1' and v_rst = '0' then
-      if v_high < C_Q or v_released < C_Q then
-        alert(ERROR, "[icd#start-timing] START after SCL was high for " & to_string(v_high)
-              & " and SDA released for " & to_string(v_released) & " clocks, at least "
-              & to_string(C_Q) & " promised", C_SCOPE);
-      end if;
-      v_in_hold := true;
-      v_hold    := 1;
+    if sda_oe = '1' and v_sda_oe = '0' and v_scl = '1' and scl_x = '1' and v_rst = '0'
+      and (v_high < C_START_STOP or v_released < C_START_STOP) then
+      alert(ERROR, "[icd#start-setup] START after SCL was high for " & to_string(v_high)
+            & " and SDA released for " & to_string(v_released) & " clocks, at least "
+            & to_string(C_START_STOP) & " promised", C_SCOPE);
     end if;
     if scl_x = '1' then
       v_high := v_high + 1;
@@ -411,36 +395,48 @@ begin
     v_sda_oe := sda_oe;
     v_scl    := scl_x;
     v_rst    := rst;
-  end process p_tw_start_timing;
+  end process p_tw_start_setup;
 
-  p_tw_stop_timing : process
+  p_tw_start_hold : process
     variable v_sda_oe, v_scl : std_logic := '0';
     variable v_rst           : std_logic := '1';
-    variable v_high          : natural := 0;
-    variable v_free          : natural := 0;
-    variable v_in_free       : boolean := false;
+    variable v_hold          : natural := 0;
+    variable v_in_hold       : boolean := false;
   begin
     wait until rising_edge(clk);
     if rst = '1' then
-      v_in_free := false;
-    elsif v_in_free then
-      if scl_oe = '1' or sda_oe = '1' then
-        if v_free < C_Q then
-          alert(ERROR, "[icd#stop-timing] bus driven again " & to_string(v_free)
-                & " clocks after the STOP, at least " & to_string(C_Q) & " promised", C_SCOPE);
+      v_in_hold := false;
+    elsif v_in_hold then
+      if scl_oe = '1' then
+        if v_hold < C_START_STOP then
+          alert(ERROR, "[icd#start-hold] SCL pulled low " & to_string(v_hold)
+                & " clocks after the START, at least " & to_string(C_START_STOP) & " promised",
+                C_SCOPE);
         end if;
-        v_in_free := false;
+        v_in_hold := false;
       else
-        v_free := v_free + 1;
+        v_hold := v_hold + 1;
       end if;
     end if;
-    if sda_oe = '0' and v_sda_oe = '1' and v_rst = '0' and scl_oe = '0' and scl_x = '1' then
-      if v_scl /= '1' or v_high < C_Q then
-        alert(ERROR, "[icd#stop-timing] STOP after SCL was high for " & to_string(v_high)
-              & " clocks, at least " & to_string(C_Q) & " promised", C_SCOPE);
-      end if;
-      v_in_free := true;
-      v_free    := 1;
+    if sda_oe = '1' and v_sda_oe = '0' and v_scl = '1' and scl_x = '1' and v_rst = '0' then
+      v_in_hold := true;
+      v_hold    := 1;
+    end if;
+    v_sda_oe := sda_oe;
+    v_scl    := scl_x;
+    v_rst    := rst;
+  end process p_tw_start_hold;
+
+  p_tw_stop_setup : process
+    variable v_sda_oe, v_scl : std_logic := '0';
+    variable v_rst           : std_logic := '1';
+    variable v_high          : natural := 0;
+  begin
+    wait until rising_edge(clk);
+    if sda_oe = '0' and v_sda_oe = '1' and v_rst = '0' and scl_oe = '0' and scl_x = '1'
+      and (v_scl /= '1' or v_high < C_START_STOP) then
+      alert(ERROR, "[icd#stop-setup] STOP after SCL was high for " & to_string(v_high)
+            & " clocks, at least " & to_string(C_START_STOP) & " promised", C_SCOPE);
     end if;
     if scl_x = '1' then
       v_high := v_high + 1;
@@ -450,7 +446,36 @@ begin
     v_sda_oe := sda_oe;
     v_scl    := scl_x;
     v_rst    := rst;
-  end process p_tw_stop_timing;
+  end process p_tw_stop_setup;
+
+  p_tw_bus_free : process
+    variable v_sda_oe  : std_logic := '0';
+    variable v_rst     : std_logic := '1';
+    variable v_free    : natural := 0;
+    variable v_in_free : boolean := false;
+  begin
+    wait until rising_edge(clk);
+    if rst = '1' then
+      v_in_free := false;
+    elsif v_in_free then
+      if scl_oe = '1' or sda_oe = '1' then
+        if v_free < C_START_STOP then
+          alert(ERROR, "[icd#bus-free] bus driven again " & to_string(v_free)
+                & " clocks after the STOP, at least " & to_string(C_START_STOP) & " promised",
+                C_SCOPE);
+        end if;
+        v_in_free := false;
+      else
+        v_free := v_free + 1;
+      end if;
+    end if;
+    if sda_oe = '0' and v_sda_oe = '1' and v_rst = '0' and scl_oe = '0' and scl_x = '1' then
+      v_in_free := true;
+      v_free    := 1;
+    end if;
+    v_sda_oe := sda_oe;
+    v_rst    := rst;
+  end process p_tw_bus_free;
 
   p_tw_sda_setup : process
     variable v_sda_oe, v_scl_oe : std_logic := '0';
@@ -730,7 +755,8 @@ begin
     variable v_rd, v_rd2      : std_logic_vector(7 downto 0);
     variable v_nack           : std_logic;
     variable v_lat            : natural;
-    variable v_low, v_period  : natural;
+    variable v_low, v_high    : natural;
+    variable v_period, v_setup : natural;
     variable b_start, b_stop  : natural;
     variable b_both, b_rise   : natural;
     variable b_rsp            : natural;
@@ -957,7 +983,7 @@ begin
     snap;
     slave_arm(60);
     cmd('1', '0', '0', '0', '0', x"00");
-    check_value(v_lat, 2 * C_Q + 2, "latency of a START alone", C_SCOPE);
+    check_value(v_lat, 3 * C_Q + 2, "latency of a START alone", C_SCOPE);
     check_bus(1, 0, 0, "START alone");
     wait until falling_edge(clk);
     check_value(scl_x = '0' and sda_x = '0', "SCL and SDA low after the START", C_SCOPE);
@@ -968,7 +994,7 @@ begin
     cmd('0', '0', '0', '1', '0', x"3C");
     check_bus(1, 0, 18, "two bytes");
     cmd('0', '1', '0', '0', '0', x"00");
-    check_value(v_lat, 3 * C_Q + C_SYNC + 2, "latency of a STOP alone", C_SCOPE);
+    check_value(v_lat, 5 * C_Q + C_SYNC + 2, "latency of a STOP alone", C_SCOPE);
     slave_done(60);
     check_bus(1, 1, 19, "STOP alone");
     check_idle("after the STOP");
@@ -1031,29 +1057,33 @@ begin
     check_value(m_period_min = C_BIT and m_period_max = C_BIT,
                 "SCL period within a byte is 4 * C_Q + 2 clocks, measured "
                 & to_string(m_period_min) & " to " & to_string(m_period_max), C_SCOPE);
+    check_value(m_high_min = C_SCL_HIGH and m_high_max = C_SCL_HIGH,
+                "SCL high within a byte is 2 * C_Q + 2 clocks, measured " & to_string(m_high_min)
+                & " to " & to_string(m_high_max), C_SCOPE);
     v_low    := m_low_min;
+    v_high   := m_high_min;
     v_period := m_period_min;
     slave_done(90);
     slave_arm(91);
     cmd('1', '0', '0', '1', '0', C_ADDR_R);
-    check_value(m_high_min = C_SCL_HIGH and m_high_max = C_SCL_HIGH,
-                "SCL high is 2 * C_Q + 2 clocks, measured " & to_string(m_high_min)
-                & " to " & to_string(m_high_max), C_SCOPE);
-    check_value(m_start_setup, C_Q + C_SYNC, "repeated START: SCL high before SDA falls",
-                C_SCOPE);
-    check_value(m_start_hold, C_Q, "START: SDA low before SCL falls", C_SCOPE);
+    check_value(m_start_setup, C_START_STOP + C_SYNC,
+                "repeated START: SCL high before SDA falls", C_SCOPE);
+    check_value(m_start_hold, C_START_STOP, "START: SDA low before SCL falls", C_SCOPE);
+    v_setup := m_start_setup;
     put('0', '1', '1', '0', '1', x"00");
     put('1', '0', '0', '0', '0', x"00");
     idle;
     get(v_rd, v_nack, v_lat);
-    check_value(m_stop_setup, C_Q + C_SYNC, "STOP: SCL high before SDA rises", C_SCOPE);
-    check_value(m_bus_free, C_Q + 2, "STOP to START with the next command waiting", C_SCOPE);
+    check_value(m_stop_setup, C_START_STOP + C_SYNC, "STOP: SCL high before SDA rises", C_SCOPE);
+    check_value(m_bus_free, C_START_STOP + 2, "STOP to START with the next command waiting",
+                C_SCOPE);
     slave_done(91);
     cmd('0', '1', '0', '0', '0', x"00");
     check_idle("after the STOP");
     log(C_LOG_HDR, "measured, in clocks (C_Q = " & to_string(C_Q) & "): SCL low "
-        & to_string(v_low) & ", SCL high " & to_string(m_high_min) & ", SCL period "
-        & to_string(v_period) & ", START hold " & to_string(m_start_hold) & ", STOP setup "
+        & to_string(v_low) & ", SCL high " & to_string(v_high) & ", SCL period "
+        & to_string(v_period) & ", START hold " & to_string(m_start_hold)
+        & ", repeated START setup " & to_string(v_setup) & ", STOP setup "
         & to_string(m_stop_setup) & ", bus free " & to_string(m_bus_free), C_SCOPE);
 
     -------------------------------------------------------------------------
@@ -1120,7 +1150,7 @@ begin
     increment_expected_alerts(ERROR, 1);
     snap;
     cmd('1', '1', '0', '0', '0', x"00");
-    check_value(v_lat, 2 * C_Q + 2, "latency is that of a START alone", C_SCOPE);
+    check_value(v_lat, 3 * C_Q + 2, "latency is that of a START alone", C_SCOPE);
     wait_num_rising_edges(clk, 2 * C_BIT);
     check_bus(1, 0, 0, "START with STOP");
     wait until falling_edge(clk);

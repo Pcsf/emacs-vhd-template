@@ -16,7 +16,9 @@
 -- neither set only START and / or STOP are generated.
 --
 -- SCL = G_SCL_HZ (each quarter period is G_CLK_HZ / (4 * G_SCL_HZ) clocks).  A
--- slave that holds SCL low stretches the clock and the master waits.  Not
+-- slave that holds SCL low stretches the clock and the master waits.  START
+-- hold, repeated START setup, STOP setup and the bus free time after a STOP
+-- are each half an SCL period, which meets I2C Standard-mode at 100 kHz.  Not
 -- supported: multi-master arbitration, 10-bit addresses.
 --
 -- Open-drain pins: *_oe = '1' pulls the line low, '0' releases it.  At the top
@@ -65,7 +67,7 @@ architecture rtl of i2c_master is
 
   type reg_type is record
     state      : state_t;
-    step       : natural range 0 to 4;
+    step       : natural range 0 to 6;
     bit_idx    : natural range 0 to 8;           -- 0-7 data bits, 8 acknowledge
     timer      : natural range 0 to C_Q - 1;
     bus_active : std_logic;                      -- a transaction is open
@@ -162,7 +164,7 @@ begin
               v.step   := 0;
               v.scl_oe := '1';
             else                           -- idle bus: SDA down while SCL is high
-              v.step   := 3;
+              v.step   := 4;
               v.sda_oe := '1';
             end if;
           elsif cmd_read = '1' or cmd_write = '1' then
@@ -189,11 +191,15 @@ begin
               v.scl_oe := '0';             -- release SCL, wait for it to rise
               v.step   := 2;
             when 2 =>
-              v.sda_oe := '1';             -- START: SDA falls while SCL is high
-              v.step   := 3;
+              v.step := 3;                 -- second quarter of the setup time
             when 3 =>
-              v.scl_oe := '1';             -- SCL low
+              v.sda_oe := '1';             -- START: SDA falls while SCL is high
               v.step   := 4;
+            when 4 =>
+              v.step := 5;                 -- second quarter of the hold time
+            when 5 =>
+              v.scl_oe := '1';             -- SCL low
+              v.step   := 6;
             when others =>
               v.bus_active := '1';
               if r.do_read = '1' or r.do_write = '1' then
@@ -264,8 +270,12 @@ begin
               v.scl_oe := '0';             -- release SCL, wait for it to rise
               v.step   := 2;
             when 2 =>
+              v.step := 3;                 -- second quarter of the setup time
+            when 3 =>
               v.sda_oe := '0';             -- STOP: SDA rises while SCL is high
-              v.step   := 3;
+              v.step   := 4;
+            when 4 =>
+              v.step := 5;                 -- bus free time: two more quarters
             when others =>
               v.bus_active := '0';
               v.state      := S_DONE;

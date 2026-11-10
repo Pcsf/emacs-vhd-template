@@ -1,3 +1,3 @@
 ;; Answers given for each block's documents; they are proposed
 ;; again when another document of the same block is created.
-(("i2c_master" ("version" . "1.0.0") ("prefix" . "REQ")))
+(("i2c_master" ("version" . "1.1.0") ("prefix" . "REQ")))
