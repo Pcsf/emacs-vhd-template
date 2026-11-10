@@ -1,60 +1,70 @@
 {{!Architecture decision record: the requirement at stake, options compared, decision, consequences}}
-#+TITLE: ADR-{{number|001}}: {{title|Level-triggered start instead of a pulse}}
+{{?number: Decision number}}
+{{?title: Decision, as a short title}}
+{{?module: Block name}}
+#+TITLE: ADR-{{number|001}}: {{title}}
 {{>header.org}}
 
-- Status :: proposed  (proposed, accepted, superseded by ADR-nnn, rejected)
+- Status :: proposed
 - Block :: ~{{module|$stem}}~
 - Date :: {{date}}
 - Deciders :: {{author}}
 
+# Status is one of: proposed, accepted, superseded by ADR-nnn, rejected.
+
 * Context
+:PROPERTIES:
+:CUSTOM_ID: context
+:END:
+
+# What forced a decision: the requirement, the constraint, the request.
+# Link the requirement: it is the measure every option is held against.
 
 {{_}}
 
-What forced a decision: the requirement, the constraint, the request from
-the software team.  Quote the requirement ID, it is the measure every
-option is held against.
-
-- Requirement at stake :: {{prefix|REQ}}-001
-- Budget it touches :: latency / resources / timing / effort
-- Does the application really need this? :: yes, because ... / no, see
-  option "do nothing"
+- Requirement at stake :: [[file:{{module}}_srs.org::#requirements][{{module}} requirements]]
+- Budget it touches ::
+- Does the application really need this? ::
 
 * Options
+:PROPERTIES:
+:CUSTOM_ID: options
+:END:
 
-| Option         | Meets the requirement | Cost (LUT, FF, latency, effort) | Risk                          | ICD change |
-|----------------+-----------------------+---------------------------------+-------------------------------+------------|
-| A: do nothing  |                       | 0                               |                               | none       |
-| B:             |                       |                                 |                               |            |
-| C:             |                       |                                 |                               |            |
+# "Do nothing" is always an option and comes first: if the existing design
+# already meets the requirement, that is the decision.
 
-"Do nothing" is always an option and is listed first: if the existing
-design already meets the requirement, that is the decision.
+| Option        | Meets the requirement | Cost | Risk | ICD change |
+|---------------+-----------------------+------+------+------------|
+| A: do nothing |                       |      |      |            |
+| B:            |                       |      |      |            |
 
 ** Option A: do nothing
 
 ** Option B
 
-** Option C
-
 * Decision
+:PROPERTIES:
+:CUSTOM_ID: decision
+:END:
 
-Option ..., because ...  One paragraph.  If the choice was between two
-options that both meet the requirement, say what tipped it (simplest
-testbench, fewest crossings, least software work).
+# One paragraph.  When two options both met the requirement, say what
+# tipped it.
 
 * Consequences
+:PROPERTIES:
+:CUSTOM_ID: consequences
+:END:
 
 - Good ::
 - Bad ::
-- ICD :: clauses that change, and the MAJOR / MINOR consequence
-- Design :: sections of ~doc_hdd~ to update
-- Tests :: test cases or monitors to add; the bad-weather case this
-  decision creates
-- Revisit when :: the condition under which this decision is wrong
+- ICD :: [[file:{{module}}_icd.org::#change-control][clauses that change]]
+- Design :: [[file:{{module}}_hdd.org::#decisions][sections to update]]
+- Tests :: [[file:{{module}}_vplan.org::#test-cases][test cases or monitors to add]]
+- Revisit when ::
 
 * Revision history
 
-| Version | Date   | Author   | Change          |
-|---------+--------+----------+-----------------|
-| 1.0.0   | {{date}} | {{author}} | Initial record  |
+| Version | Date | Author | Change |
+|---------+------+--------+--------|
+| 1.0.0 | {{date}} | {{author}} | Initial record |

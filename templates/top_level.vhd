@@ -1,4 +1,5 @@
 {{!FPGA top level: board clock and reset button, reset synchronizer, blinking LED}}
+{{+reset_sync counter}}
 {{>header.vhd}}
 
 -- Needs the reset_sync and counter templates in the same project.

@@ -1,4 +1,5 @@
 {{!BFM: I2C master and slave (transmit, receive, check), clock stretching, address NACK, repeated START}}
+{{+tb_util_pkg}}
 {{>header.vhd}}
 
 -- Usage (in a testbench, needs tb_util_pkg).  The bus is two std_logic

@@ -1,4 +1,5 @@
 {{!BFM: SPI master and slave, modes 0-3, MSB or LSB first, 1-32 bits per word}}
+{{+tb_util_pkg}}
 {{>header.vhd}}
 
 -- Usage (in a testbench, needs tb_util_pkg):

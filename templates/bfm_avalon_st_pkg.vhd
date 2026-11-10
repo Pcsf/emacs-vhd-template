@@ -1,4 +1,5 @@
 {{!BFM: Avalon-ST source (transmit packets) and sink (receive, expect), ready latency 0}}
+{{+tb_util_pkg}}
 {{>header.vhd}}
 
 -- Usage (in a testbench, needs tb_util_pkg):

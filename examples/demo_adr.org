@@ -1,0 +1,78 @@
+#+TITLE: ADR-001: Level-triggered start instead of a pulse
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+
+# Worked example of the doc_adr template of emacs-vhd-template, for an
+# imaginary block "demo" with a start/busy/done interface and four registers.
+
+- Status :: proposed  (proposed, accepted, superseded by ADR-nnn, rejected)
+- Block :: ~demo~
+- Date :: 2026-11-10
+- Deciders :: Pcsf
+
+* Context
+:PROPERTIES:
+:CUSTOM_ID: context
+:END:
+
+
+
+What forced a decision: the requirement, the constraint, the request from
+the software team.  Quote the requirement ID, it is the measure every
+option is held against.
+
+- Requirement at stake :: [[file:demo_srs.org::#REQ-001][REQ-001]]
+- Budget it touches :: latency / resources / timing / effort
+- Does the application really need this? :: yes, because ... / no, see
+  option "do nothing"
+
+* Options
+:PROPERTIES:
+:CUSTOM_ID: options
+:END:
+
+| Option        | Meets the requirement | Cost (LUT, FF, latency, effort) | Risk | ICD change |
+|---------------+-----------------------+---------------------------------+------+------------|
+| A: do nothing |                       |                               0 |      | none       |
+| B:            |                       |                                 |      |            |
+| C:            |                       |                                 |      |            |
+
+"Do nothing" is always an option and is listed first: if the existing
+design already meets the requirement, that is the decision.
+
+** Option A: do nothing
+
+** Option B
+
+** Option C
+
+* Decision
+:PROPERTIES:
+:CUSTOM_ID: decision
+:END:
+
+Option ..., because ...  One paragraph.  If the choice was between two
+options that both meet the requirement, say what tipped it (simplest
+testbench, fewest crossings, least software work).
+
+* Consequences
+:PROPERTIES:
+:CUSTOM_ID: consequences
+:END:
+
+- Good ::
+- Bad ::
+- ICD :: [[file:demo_icd.org::#reg-control][CONTROL.START]] becomes a level; MINOR moves
+- Design :: [[file:demo_hdd.org::#fsm][control FSM]], edge detect on a registered copy
+- Tests :: test cases or monitors to add; the bad-weather case this
+  decision creates
+- Revisit when :: the condition under which this decision is wrong
+
+* Revision history
+
+| Version |       Date | Author | Change         |
+|---------+------------+--------+----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial record |

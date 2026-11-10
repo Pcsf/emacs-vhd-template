@@ -1,0 +1,96 @@
+#+TITLE: Release 1.0.0: demo
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+
+# Worked example of the doc_release template of emacs-vhd-template, for an
+# imaginary block "demo" with a start/busy/done interface and four registers.
+
+* Identity
+:PROPERTIES:
+:CUSTOM_ID: identity
+:END:
+
+| Item             | Value                                       |
+|------------------+---------------------------------------------|
+| Block / design   | ~demo~                                      |
+| Version          | 1.0.0, VERSION register reads ~0x0001_0000~ |
+| Git tag / commit | ~v1.0.0~ / ~0000000~, clean tree            |
+| Build date       | 2026-11-10                                  |
+| Tool             |                                             |
+| Device / board   |                                             |
+| Bitstream        | file name and checksum                      |
+| Built by         | Pcsf                                        |
+
+
+
+* Changes since the previous release
+:PROPERTIES:
+:CUSTOM_ID: changes
+:END:
+
+** Added
+
+** Changed
+
+** Fixed
+
+** Interface
+
+ICD changes, with the clause and whether MAJOR or MINOR moved.  "None" when
+the ICD is untouched: software can then stay as it is.
+
+| ICD clause | Change | Breaks existing software |
+|------------+--------+--------------------------|
+| none       |        | no                       |
+
+* Verification status
+:PROPERTIES:
+:CUSTOM_ID: verification
+:END:
+
+| Check       | Result                | Reference                    |
+|-------------+-----------------------+------------------------------|
+| ~make test~ | TEST PASSED, n cases  | [[file:demo_test_report.org::#verdict][test report]]                  |
+| Timing      | WNS ns, THS ns        | timing summary of this build |
+| CDC         | clean                 | ~report_cdc~                 |
+| Utilisation | LUT / FF / BRAM / DSP | utilisation report           |
+| Hardware    | tested on board ...   | [[file:demo_test_report.org::#hardware][test report, hardware]]        |
+| Review      | approved              | [[file:demo_review.org::#verdict][design review]] of 2026-11-10  |
+
+* Known issues and limitations
+:PROPERTIES:
+:CUSTOM_ID: known-issues
+:END:
+
+| ID | Description | Workaround | Planned for |
+|----+-------------+------------+-------------|
+|    |             |            |             |
+
+* Upgrade notes for software
+:PROPERTIES:
+:CUSTOM_ID: upgrade
+:END:
+
+1. Check VERSION: MAJOR must be ... .
+2. Run the recovery sequence of the [[file:demo_icd.org::#recovery][ICD]] after loading the bitstream.
+3. Anything new the driver must do, or may stop doing.
+
+* Files delivered
+:PROPERTIES:
+:CUSTOM_ID: files
+:END:
+
+| File           | Purpose                      |
+|----------------+------------------------------|
+| ~demo.bit~     | bitstream                    |
+| ~demo_icd.org~ | ICD version 1.0.0            |
+| ~src/~, ~tb/~  | sources at the tagged commit |
+
+* Revision history
+
+| Version |       Date | Author | Change       |
+|---------+------------+--------+--------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | This release |

@@ -1,4 +1,5 @@
 {{!BFM: Avalon-MM master (write, read, check) with waitrequest and readdatavalid handling}}
+{{+tb_util_pkg}}
 {{>header.vhd}}
 
 -- Usage (in a testbench, needs tb_util_pkg):

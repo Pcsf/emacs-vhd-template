@@ -1,4 +1,5 @@
 {{!Testbench with BFMs for an AXI-Stream DUT: TC-numbered sequencer, sink checker, final report}}
+{{+tb_util_pkg bfm_axis_pkg}}
 {{>header.vhd}}
 
 -- Needs tb_util_pkg and bfm_axis_pkg, and a DUT with this port list (the

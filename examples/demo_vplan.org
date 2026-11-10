@@ -1,0 +1,224 @@
+#+TITLE: Verification plan: demo
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+#+COLUMNS: %ITEM(Test case) %REQUIREMENT %KIND %RESULT
+
+# Worked example of the doc_vplan template of emacs-vhd-template, for an
+# imaginary block "demo" with a start/busy/done interface and four registers.
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+How ~demo~ is shown to meet its requirements and its ICD before it is
+released.  Verification asks "did we build it right": every requirement
+with method T is covered by a numbered test case here, every ICD clause by
+a monitor.  Validation ("did we build the right thing") is the system
+test, outside this document.
+
+
+
+- Items under test :: ~src/demo.vhd~, ~src/demo_pkg.vhd~
+- Requirements :: [[file:demo_srs.org::#requirements][demo requirements]], version 1.0.0
+- Interface :: [[file:demo_icd.org::#scope][demo ICD]]
+- Results :: reported in the [[file:demo_test_report.org::#results][demo test report]]
+
+* Strategy
+:PROPERTIES:
+:CUSTOM_ID: strategy
+:END:
+
+| Level       | What                                      | Tool              | Verdict                             |
+|-------------+-------------------------------------------+-------------------+-------------------------------------|
+| Unit        | ~tb_demo~: numbered test cases, monitors  | GHDL, ~make test~ | ~TEST PASSED~ in the log            |
+| Integration | Block in the top level, BFMs on the buses | GHDL              | ~TEST PASSED~                       |
+| Static      | CDC report, timing report, utilisation    | Vivado / Quartus  | no unconstrained crossing, WNS >= 0 |
+| Hardware    | Driver smoke test on the board            | target board      | checklist in the test report        |
+
+What simulation cannot show: metastability, timing, how the tool maps the
+code.  Those are the static level, and they are not optional.
+
+* Environment
+:PROPERTIES:
+:CUSTOM_ID: environment
+:END:
+
+| Item         | Version / value            |
+|--------------+----------------------------|
+| Simulator    | GHDL 4.1, ~--std=08~       |
+| Build        | mk framework, ~project.mk~ |
+| Synthesis    |                            |
+| Device       |                            |
+| Clock period | 10 ns                      |
+
+Run: ~make test~.  A run that never prints ~TEST PASSED~ fails, and so does
+one that exceeds ~TEST_TIME~.  Inputs change just after a rising edge and
+outputs are checked on the falling edge, so a check reads the value the
+last edge produced.
+
+* Test cases
+:PROPERTIES:
+:CUSTOM_ID: test-cases
+:END:
+
+One behaviour per test case: a headline whose title says in one sentence
+what is expected, with the requirement it serves as a property.  The ~tc~
+snippet adds the code of the next one to the testbench, the ~doc_tc~
+snippet its headline here.  The test report takes its rows from these
+headlines.
+
+** TC-01 Reset leaves busy and done low, VERSION reads back
+:PROPERTIES:
+:CUSTOM_ID: TC-01
+:REQUIREMENT: [[file:demo_srs.org::#REQ-060][REQ-060]], [[file:demo_srs.org::#REQ-021][REQ-021]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+** TC-02 Start raises busy on the next clock
+:PROPERTIES:
+:CUSTOM_ID: TC-02
+:REQUIREMENT: [[file:demo_srs.org::#REQ-001][REQ-001]], [[file:demo_srs.org::#REQ-002][REQ-002]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+** TC-03 Busy stays high until the clock of done
+:PROPERTIES:
+:CUSTOM_ID: TC-03
+:REQUIREMENT: [[file:demo_srs.org::#REQ-002][REQ-002]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+** TC-04 Done arrives within 256 clocks
+:PROPERTIES:
+:CUSTOM_ID: TC-04
+:REQUIREMENT: [[file:demo_srs.org::#REQ-040][REQ-040]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+** TC-05 DONE clears on write-1, not on read
+:PROPERTIES:
+:CUSTOM_ID: TC-05
+:REQUIREMENT: [[file:demo_icd.org::#reg-status][ICD, STATUS]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+** TC-10 Start while busy is ignored
+:PROPERTIES:
+:CUSTOM_ID: TC-10
+:REQUIREMENT: [[file:demo_srs.org::#REQ-003][REQ-003]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+** TC-11 SOFT_RST during an operation aborts without done
+:PROPERTIES:
+:CUSTOM_ID: TC-11
+:REQUIREMENT: [[file:demo_srs.org::#REQ-061][REQ-061]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+** TC-12 Write to a read-only register returns SLVERR
+:PROPERTIES:
+:CUSTOM_ID: TC-12
+:REQUIREMENT: [[file:demo_icd.org::#registers][ICD, register map]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+** TC-13 Start while ERR=1 is ignored until SOFT_RST
+:PROPERTIES:
+:CUSTOM_ID: TC-13
+:REQUIREMENT: [[file:demo_icd.org::#illegal-sequences][ICD, illegal sequences]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+** TC-14 Commands replayed after a simulated software reboot
+:PROPERTIES:
+:CUSTOM_ID: TC-14
+:REQUIREMENT: [[file:demo_srs.org::#REQ-003][REQ-003]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+** Bad weather
+:PROPERTIES:
+:CUSTOM_ID: bad-weather
+:END:
+
+The stimulus behaves like software that ignores the ICD: double start,
+writes while busy, a reboot in the middle of a transaction, enable before
+the clock is stable.  The expected result is always the same: the block
+stays safe, the bus is never locked, and the monitor for the clause fires.
+
+* Contract monitors
+:PROPERTIES:
+:CUSTOM_ID: monitors
+:END:
+
+Independent processes in ~tb_demo~ that drive nothing and stop the
+simulation on an ICD violation.  One per clause, named after it.  A monitor
+that never fires in the bad-weather tests is a monitor that does not work.
+
+| Monitor                      | ICD clause        | Fires in |
+|------------------------------+-------------------+----------|
+| ~p_tw_no_start_while_busy~   | [[file:demo_icd.org::#illegal-sequences][illegal sequences]] | TC-10    |
+| ~p_tw_busy_follows_start~    | [[file:demo_icd.org::#latency][latency]]           | never    |
+| ~p_tw_done_within_max~       | [[file:demo_icd.org::#latency][latency]]           | never    |
+| ~p_tw_bus_response_within_2~ | [[file:demo_icd.org::#bus-access][bus access]]        | never    |
+| ~p_tw_soft_rst_aborts~       | [[file:demo_icd.org::#illegal-sequences][illegal sequences]] | TC-11    |
+
+* Mutation checks
+:PROPERTIES:
+:CUSTOM_ID: mutations
+:END:
+
+A test that has never failed has not shown it can.  Each test case is broken
+once on purpose, the failure is seen, and the change undone.
+
+| TC    | Mutant                              | Failed as expected |
+|-------+-------------------------------------+--------------------|
+| TC-01 | Wrong ~REG_RESET~ value             |                    |
+| TC-02 | Drop the start condition in ~comb~  |                    |
+| TC-04 | Off-by-one in the operation counter |                    |
+
+* Coverage
+:PROPERTIES:
+:CUSTOM_ID: coverage
+:END:
+
+- Requirements: every T requirement has a TC in the table above; the
+  
+  [[file:demo_rtm.org::#matrix][traceability matrix]] is the check.
+- Code: every FSM state entered and left; every ~case~ branch including
+  ~others~.  Measured with ~ghdl --coverage~ or by inspection of the log.
+- Functional: each ICD side effect exercised at least once.
+
+* Exit criteria
+:PROPERTIES:
+:CUSTOM_ID: exit-criteria
+:END:
+
+- [ ] ~make test~ prints ~TEST PASSED~ for every testbench
+- [ ] Every T requirement has a passing test case
+- [ ] Every bad-weather test fires its monitor and only its monitor
+- [ ] Every mutation check has failed once
+- [ ] CDC report clean, timing met, utilisation within budget
+- [ ] Hardware smoke test passed
+- [ ] Test report written and signed
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

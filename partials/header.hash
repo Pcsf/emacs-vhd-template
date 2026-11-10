@@ -1,3 +1,4 @@
+{{?desc: One-line description of the file}}
 ################################################################################
 ## File        : {{filename}}
 ## Description : {{desc|TODO}}

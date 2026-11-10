@@ -1,4 +1,5 @@
 {{!Test-first testbench for a two-process block on tb_util_pkg: port records, numbered test cases, make test verdict}}
+{{+tb_util_pkg}}
 {{>header.vhd}}
 
 -- Needs tb_util_pkg, analysed first.  Inputs change just after a rising

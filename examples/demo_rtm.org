@@ -1,0 +1,82 @@
+#+TITLE: Traceability: demo
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+
+# Worked example of the doc_rtm template of emacs-vhd-template, for an
+# imaginary block "demo" with a start/busy/done interface and four registers.
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+One row per requirement of ~demo~, from its ID to the design element
+that implements it, the ICD clause that exposes it, the test case that
+verifies it and the latest result.  An empty cell is a finding: a
+requirement nobody implemented, nobody tested, or a test nobody asked for.
+
+
+
+- Source :: [[file:demo_srs.org::#requirements][demo requirements]]: the properties of
+  each requirement headline are its row here
+- Tests :: [[file:demo_vplan.org::#test-cases][demo verification plan]]
+
+* Matrix
+:PROPERTIES:
+:CUSTOM_ID: matrix
+:END:
+
+# Generated: do not edit the table.  Change the properties of the
+# requirement in the SRS, then press C-c C-c on the next line.
+#+BEGIN: columnview :id "file:demo_srs.org" :skip-empty-rows t
+| Requirement                                | METHOD | DESIGN             | ICD               | TEST               | MONITOR                  | RESULT |
+|--------------------------------------------+--------+--------------------+-------------------+--------------------+--------------------------+--------|
+| REQ-001 Start begins exactly one operation | T      | [[file:demo_hdd.org::#fsm][FSM]]                | [[file:demo_icd.org::#reg-control][CONTROL]]           | [[file:demo_vplan.org::#TC-02][TC-02]]              |                          | PASS   |
+| REQ-002 Busy covers the whole operation    | T      | [[file:demo_hdd.org::#fsm][FSM]]                | [[file:demo_icd.org::#reg-status][STATUS]]            | [[file:demo_vplan.org::#TC-03][TC-03]]              | p_tw_busy_follows_start  | PASS   |
+| REQ-003 Illegal input is ignored           | T      | [[file:demo_hdd.org::#fsm][FSM]]                | [[file:demo_icd.org::#illegal-sequences][illegal sequences]] | [[file:demo_vplan.org::#TC-10][TC-10]]              | p_tw_no_start_while_busy | PASS   |
+| REQ-020 Register interface                 | T      | [[file:demo_hdd.org::#register-interface][register interface]] | [[file:demo_icd.org::#registers][register map]]      | [[file:demo_vplan.org::#TC-12][TC-12]]              |                          | PASS   |
+| REQ-021 Version read-back                  | T      | [[file:demo_hdd.org::#register-interface][register interface]] | [[file:demo_icd.org::#reg-version][VERSION]]           | [[file:demo_vplan.org::#TC-01][TC-01]]              |                          | PASS   |
+| REQ-040 Latency                            | T, A   | [[file:demo_hdd.org::#structure][operation timer]]    | [[file:demo_icd.org::#latency][latency]]           | [[file:demo_vplan.org::#TC-04][TC-04]]              | p_tw_done_within_max     | PASS   |
+| REQ-041 Clock frequency                    | A      | [[file:demo_hdd.org::#clocks][clocks]]             | [[file:demo_icd.org::#clocks][clocks]]            | timing report      |                          | PASS   |
+| REQ-050 Resource budget                    | A      | [[file:demo_hdd.org::#budget][budget]]             |                   | utilisation report |                          | PASS   |
+| REQ-060 Reset state                        | T      | [[file:demo_hdd.org::#clocks][REG_RESET]]          | [[file:demo_icd.org::#clocks][resets]]            | [[file:demo_vplan.org::#TC-01][TC-01]]              |                          | PASS   |
+| REQ-061 Recovery without hardware reset    | T      | [[file:demo_hdd.org::#clocks][SOFT_RST]]           | [[file:demo_icd.org::#recovery][recovery]]          | [[file:demo_vplan.org::#TC-11][TC-11]]              | p_tw_soft_rst_aborts     | PASS   |
+| REQ-080 Language and style                 | I      | [[file:demo_hdd.org::#structure][structure]]          |                   | design review      |                          | PASS   |
+| REQ-081 Self-checking testbench            | I, D   |                    |                   | make test          |                          | PASS   |
+#+END:
+
+Result: PASS, FAIL, OPEN (not yet run), N/A with a reason.
+
+* Reverse trace
+:PROPERTIES:
+:CUSTOM_ID: reverse-trace
+:END:
+
+Things that exist without a requirement.  Each one is either given a
+requirement or questioned: "does the application really need this?"
+
+| Design element or test | Why it exists | Action                |
+|------------------------+---------------+-----------------------|
+| SCRATCH register       | bus bring-up  | add REQ-022 or accept |
+
+* Status
+:PROPERTIES:
+:CUSTOM_ID: status
+:END:
+
+| Count                       | n |
+|-----------------------------+---|
+| Requirements                |   |
+| ... with a design element   |   |
+| ... with a test or analysis |   |
+| ... verified (PASS)         |   |
+| Tests without a requirement |   |
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

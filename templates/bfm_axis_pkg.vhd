@@ -1,4 +1,5 @@
 {{!BFM: AXI4-Stream master (transmit packets) and slave (receive, expect), with gaps and back-pressure}}
+{{+tb_util_pkg}}
 {{>header.vhd}}
 
 -- Usage (in a testbench, needs tb_util_pkg):

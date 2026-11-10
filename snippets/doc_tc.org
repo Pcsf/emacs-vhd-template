@@ -1,0 +1,11 @@
+{{!Test case headline for the verification plan, with the properties the test report reads}}
+{{?id: Test case number}}
+{{?title: Expected behaviour, in one sentence}}
+{{?kind: good weather or bad weather}}
+** {{id|TC-00}} {{title}}
+:PROPERTIES:
+:CUSTOM_ID: {{id}}
+:REQUIREMENT: {{_}}
+:KIND:     {{kind|good weather}}
+:RESULT:   OPEN
+:END:

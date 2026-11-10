@@ -1,4 +1,5 @@
 {{!Self-checking testbench on tb_util_pkg: clock_generator, reset pulse, numbered test cases, final report}}
+{{+tb_util_pkg}}
 {{>header.vhd}}
 
 -- Needs tb_util_pkg (C-c t n tb_util_pkg), analysed first.  Inputs are driven

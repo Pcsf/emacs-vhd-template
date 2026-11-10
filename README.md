@@ -10,10 +10,12 @@ VHDL and FPGA file templates for Emacs. It uses only what ships with Emacs
   (clock generator, pulses, `check_value`, `await_value`, alert counting,
   scoreboard) and bus functional models (BFMs) on top of it, top level,
   GHDL and Vivado scripts, constraints.
-- Write the documents around a block as Org files from the same chooser:
-  interface control document (ICD) with register side effects, requirements,
-  design description, verification plan, test report, traceability matrix,
-  decision record, design review, release note.
+- Write the documents around a block as Org files: one command creates the
+  interface control document (ICD), requirements, design description,
+  verification plan and traceability matrix of a block, linked to each
+  other. The port table is read from the entity and the matrix is generated
+  from the requirements. Test report, decision record, design review and
+  release note come from the same chooser.
 - Insert snippets at point: clocked process, `case`, `generate`, entity
   instance, and more. They are indented to fit the surrounding code.
 - New `.xdc` (Vivado) and `.sdc` files are filled with a constraints template.
@@ -59,11 +61,21 @@ Add this to `~/.emacs.d/init.el`:
 | `C-x C-f src/uart_tx_tb.vhd`    | Same, and proposes `testbench` (from the `_tb` suffix)   |
 | `C-c t n`                       | New file: pick template, then file name                  |
 | `C-c t b`                       | New two-process block, test first: package, skeleton, testbench, `project.mk` |
+| `C-c t d`                       | The documents of a block, in `doc/`: ICD, requirements, design, plan, matrix |
 | `C-c t t`                       | Insert a whole-file template at point                    |
 | `C-c t s`                       | Insert a snippet at point, indented for the context      |
 | `M-x auto-insert`               | Insert a template into the current empty buffer          |
 
-The template list shows a one-line description next to each name.
+The template list shows a one-line description next to each name and is
+grouped into Design, Verification, Project files and Documents (Emacs 28 or
+newer shows the groups). A new `.vhd` file is offered the VHDL templates
+only, and `C-c t t` / `C-c t s` offer what fits the file type of the buffer;
+`C-u` before them, or `C-c t n`, lists everything.
+
+A template that needs another one says so: `top_level` instantiates
+`reset_sync` and `counter`, a BFM uses `tb_util_pkg`. When the new file is
+created and one of those is missing next to it, you are asked once whether
+to create them too. Existing files are never touched.
 `vhdl-mode` already owns `C-c C-t` for its own templates, so this package uses
 `C-c t`. Change it with `(setq vhdl-tpl-key-prefix "C-c v")`, or `nil` for no
 binding.
@@ -241,15 +253,15 @@ under test.
 
 | Template          | Contents |
 |-------------------|----------|
-| `doc_icd`         | Interface control document: ports, clocks and resets, CDC list, register map with a side-effect entry per register and bit, bus timing, normal and illegal sequences, error causes, recovery after a software reboot, change control |
-| `doc_srs`         | Requirements: numbered shall-statements with rationale, verification method (T/A/I/D) and test case, grouped functional, interface, performance, resources, reset, constraints |
-| `doc_hdd`         | Design description: block diagram, file list, clocks and resets, CDC table, `reg_type` fields, FSM table, datapath, register interface, decisions, resource budget, requirements satisfied |
-| `doc_vplan`       | Verification plan: unit / integration / static / hardware levels, environment, test case table traced to requirements, bad-weather tests, contract monitors, mutation checks, coverage, exit criteria |
-| `doc_test_report` | Test report: verdict, configuration under test (commit, tools), results per test case, static results (timing, CDC, utilisation), hardware test, anomalies, deviations, sign-off |
-| `doc_rtm`         | Traceability matrix: requirement to design element, ICD clause, test case, monitor and result; reverse trace of things without a requirement; counts |
+| `doc_icd`         | Interface control document: port table read from the entity, clocks and resets, CDC list, register map with a side-effect entry per register, one table row per bit, bus timing, normal and illegal sequences, error causes, recovery after a software reboot, change control |
+| `doc_srs`         | Requirements: one headline per shall-statement with its rationale; method, test, design element, ICD clause and result are properties of the headline |
+| `doc_hdd`         | Design description: block diagram, file list, clocks and resets, CDC table, register record, FSM table, datapath, register interface, decisions, resource budget |
+| `doc_vplan`       | Verification plan: levels, environment, one headline per test case with its requirement and result, contract monitors, mutation checks, coverage, exit criteria |
+| `doc_rtm`         | Traceability matrix, generated from the requirement headlines of `doc_srs`; reverse trace of things without a requirement |
+| `doc_test_report` | Test report: verdict, configuration under test, results generated from the test cases of `doc_vplan`, static results (timing, CDC, utilisation), hardware test, anomalies, deviations, sign-off |
 | `doc_adr`         | Architecture decision record: requirement at stake, options with "do nothing" first, decision, consequences for ICD, design and tests |
 | `doc_review`      | Design review record: checklist for requirements and ICD, reset and clocks, CDC, code, verification, implementation; findings with owner; verdict |
-| `doc_release`     | Release note: version and `VERSION` register value, commit, tool, changes, ICD changes and whether they break software, verification status, known issues, upgrade steps |
+| `doc_release`     | Release note: version, commit, tool, changes, ICD changes and whether they break software, verification status, known issues, upgrade steps |
 
 ### Snippets (`snippets/`)
 
@@ -257,42 +269,74 @@ under test.
 `slv_array`, `generate_for`, `generate_if`, `inst_entity`, `function`,
 `clog2`, `assert_check`, `attr_debug` (Vivado `mark_debug`), `tristate`,
 `check_value` and `tc` (a numbered test case on `tb_util_pkg` that fails
-until you write its check).
+until you write its check). For the documents: `doc_req` (a requirement
+headline with its properties) and `doc_tc` (a test case headline).
 
 ## System engineering documents
 
 The `doc_*` templates are Org files for the paperwork that keeps a block
 honest: the contract with the software team, the requirements it is tested
 against, and the records that show it was. They live in the repository next
-to the VHDL, so they are diffed, reviewed and versioned with it. Create one
-with `C-c t n` from a VHDL buffer, or `M-x vhdl-tpl-new-file` anywhere, and
-type the file name (`uart_icd.org`); the file name proposes the module name.
-New `.org` files are not filled by `auto-insert`, since not every Org file is
-an FPGA document.
+to the VHDL, so they are diffed, reviewed and versioned with it.
 
-The documents are written for the blocks in this repository and refer to
-each other by section number:
+`C-c t d` (`M-x vhdl-tpl-new-docs`) asks for the project root and the block
+name, then for each remaining question once, and writes the set:
 
-- `doc_icd` documents the register map of `axi_lite_regs` (CONTROL, STATUS,
-  SCRATCH, VERSION) around the `start` / `busy` / `done` interface of the
-  two-process skeleton. Every register and bit has a side-effect entry, "none"
-  included, because the side effect is what breaks software six months later.
-  Each timing clause names the testbench monitor (`p_tw_*`: an independent
-  process that drives nothing and stops the simulation on a violation) that
-  enforces it.
-- `doc_srs` numbers requirements `REQ-NNN` and points each at a test case
-  `TC-NN`, the numbering the `tc` snippet and `two_process_tb` use.
-- `doc_vplan` lists the test cases, the bad-weather tests (software that
-  ignores the ICD: double start, write while busy, reboot mid-transaction),
-  the monitors and the mutation checks; `doc_test_report` reports them, and
-  `doc_rtm` ties requirement, design section, ICD clause, test and result
-  together in one table.
-- `doc_hdd`, `doc_adr`, `doc_review` and `doc_release` cover the design, its
-  decisions, its review and what was shipped.
+```
+doc/<name>_icd.org      interface control document
+doc/<name>_srs.org      requirements
+doc/<name>_hdd.org      design description
+doc/<name>_vplan.org    verification plan
+doc/<name>_rtm.org      traceability matrix
+doc/.vhdl-tpl           the answers, kept per block
+```
+
+Existing documents are never overwritten; run it again to add the missing
+ones. `vhdl-tpl-doc-set` names the documents of the set. The other four
+(`doc_adr`, `doc_review`, `doc_release`, `doc_test_report`) record an event,
+so create them one at a time with `C-c t n` and a file name such as
+`doc/uart_release.org` or `doc/uart_adr_002.org`: the block name comes from
+the file name, and the answers kept in `doc/.vhdl-tpl` are proposed again,
+so the documents of a block agree on its requirement prefix and version.
+`C-c t` also works inside these Org files. Other new `.org` files are left
+alone, since not every Org file is an FPGA document.
+
+What the templates give you:
+
+- **A skeleton, not an example.** Headings and empty tables, with the
+  guidance for each section as Org comment lines (`# ...`), which are not
+  exported. Nothing has to be cleaned out before writing. A filled-in set
+  for an imaginary block is in [`examples/`](examples/), to read next to
+  the skeleton.
+- **The port table follows the VHDL.** In the ICD it is a dynamic block read
+  from `src/<name>.vhd`: name, direction, width and the comment of each
+  port. A port of a record type declared in `src/<name>_pkg.vhd` is listed
+  field by field, which is what a two-process block needs. After the entity
+  changed, press `C-c C-c` on the `#+BEGIN: vhdl-ports` line. Correct a
+  description in the VHDL comment, not in the table.
+- **The matrix is generated.** A requirement is a headline in the SRS, and
+  its verification method, test, design element, ICD clause, monitor and
+  result are properties of that headline. The traceability matrix is a
+  column view of those headlines, and the results table of the test report
+  is a column view of the test case headlines in the plan: `C-c C-c` on the
+  `#+BEGIN: columnview` line updates it. `C-c C-x C-c` in the SRS or the
+  plan shows the same columns in place for editing.
+- **Links, not section numbers.** The documents refer to each other with
+  Org links to the `CUSTOM_ID` of a heading
+  (`[[file:uart_icd.org::#recovery][...]]`), so adding a section breaks
+  nothing. Every heading of a skeleton has an ID; give each register
+  section and each requirement its own.
+- **One table row per bit.** A register section has a short row per bit
+  field and, under the table, a list entry for each field with a contract
+  (auto-clear, write-1-to-clear, ignored while another bit is set), where
+  the text can be as long as it needs.
 
 The Org header (`#+AUTHOR`, `#+DATE`, `#+OPTIONS` with `^:nil` so that
 `uart_tx` is not a subscript) is `partials/header.org`; override it from
 your own directory to add a company or classification line.
+
+Dynamic blocks need Org as shipped with Emacs; the column views were run
+with Org 9.8 (Emacs 31) and are not tested on older versions.
 
 ## Testbench utilities
 
@@ -434,6 +478,7 @@ How they work, common to all of them:
 | `vhdl-tpl-default-template`    | `"entity_arch"` | Proposed for a plain `.vhd` file |
 | `vhdl-tpl-user-directory`      | `nil`        | Your own templates, see below |
 | `vhdl-tpl-constraint-templates`| `t`          | Fill new `.xdc` and `.sdc` files |
+| `vhdl-tpl-doc-set`             | ICD, SRS, HDD, plan, matrix | Documents written by `C-c t d` |
 | `vhdl-tpl-key-prefix`          | `"C-c t"`    | Key prefix of `vhdl-tpl-mode` |
 
 ### Your own templates
@@ -458,9 +503,12 @@ A template is the file you want, with a few markers:
 | `{{_}}`             | Where point ends up |
 | `{{>header.vhd}}`   | Include `partials/header.vhd` |
 | `{{!text}}`         | A whole line that is a description for the chooser; it is not inserted |
+| `{{?name: text}}`   | A whole line giving the question asked for `name`, instead of the bare name; not inserted |
+| `{{+other}}`        | A whole line naming the templates this one needs next to it (space separated); not inserted |
 
 Built-in variables (never asked): `filename` (`foo_tb.vhd`), `file`
-(`foo_tb`), `stem` (`foo`, without `_tb`, `_pkg`, `_top` or a `tb_` prefix),
+(`foo_tb`), `stem` (`foo`, without `_tb`, `_pkg`, `_top` or a `tb_` prefix; for an Org file,
+without the document suffix, so `uart_icd.org` gives `uart`),
 `date`, `year`, `author`, `email`.
 
 Answers are inserted as typed and are never expanded a second time.
@@ -504,7 +552,8 @@ and works in CI.
 ## Tests
 
 ```sh
-make test     # Elisp tests (ERT): engine, auto-insert, key bindings, indentation, Org documents
+make test     # Elisp tests (ERT): engine, auto-insert, chooser, key bindings, indentation,
+              # Org documents (links, generated tables, port table), examples
 make sim      # render every template with its defaults, then GHDL
               # analyse, elaborate and simulate them (needs ghdl)
 make tdd      # C-c t b bundle on the mk framework: RED on the skeleton,
@@ -586,6 +635,7 @@ vhdl-tpl.el     the whole engine (one file)
 templates/      whole-file templates (VHDL, constraints, scripts, Org documents)
 snippets/       fragments
 partials/       shared pieces (file headers, Org keywords)
+examples/       the documents filled in for an imaginary block
 test/           ERT tests, render script, functional testbenches
 Makefile        make check
 ```

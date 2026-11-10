@@ -1,0 +1,269 @@
+#+TITLE: Requirements: demo
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+#+COLUMNS: %ITEM(Requirement) %METHOD %DESIGN %ICD %TEST %MONITOR %RESULT
+
+# Worked example of the doc_srs template of emacs-vhd-template, for an
+# imaginary block "demo" with a start/busy/done interface and four registers.
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+What ~demo~ has to do, seen from outside, and how each statement will
+be shown to hold.  It does not say how the block is built (design
+description) or what its registers look like (ICD); it is what those two
+documents and the testbench are checked against.
+
+
+
+- Parent :: the system requirement or ticket this block exists for
+- Interface :: [[file:demo_icd.org::#scope][demo ICD]]
+- Design :: [[file:demo_hdd.org::#overview][demo design description]]
+- Verification :: [[file:demo_vplan.org::#test-cases][demo verification plan]]
+- Traceability :: [[file:demo_rtm.org::#matrix][demo traceability matrix]]
+
+* Reading a requirement
+:PROPERTIES:
+:CUSTOM_ID: reading
+:END:
+
+- One ID per statement, ~REQ-NNN~, never reused once published.
+  Gaps are fine; renumbering is not.
+- One "shall" per requirement.  "And" usually means two requirements.
+- Every requirement has a rationale: the question to answer is "does the
+  application really need this?".  No rationale, no requirement.
+- Every requirement names a verification method and, once it exists, the
+  test case or analysis that verifies it.  These are properties of the
+  headline, with the design element and the ICD clause, and the
+  traceability matrix is generated from them:
+
+| Method | Meaning                                                 |
+|--------+---------------------------------------------------------|
+| T      | Test: a numbered test case in ~tb_demo~ or on hardware  |
+| A      | Analysis: calculation or report (timing, CDC, resource) |
+| I      | Inspection: reading the code or the constraint file     |
+| D      | Demonstration: it visibly works, no measurement         |
+
+- STATUS is one of proposed, approved, verified, deleted; RESULT is PASS,
+  FAIL, OPEN (not yet run), or N/A with a reason.
+
+* Requirements
+:PROPERTIES:
+:CUSTOM_ID: requirements
+:END:
+
+** Functional
+
+*** REQ-001 Start begins exactly one operation
+:PROPERTIES:
+:CUSTOM_ID: REQ-001
+:METHOD:   T
+:TEST:     [[file:demo_vplan.org::#TC-02][TC-02]]
+:DESIGN:   [[file:demo_hdd.org::#fsm][FSM]]
+:ICD:      [[file:demo_icd.org::#reg-control][CONTROL]]
+:MONITOR:
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: The block shall begin one operation on each 0 to 1 transition of
+  ~start~ sampled while it is idle.
+- Rationale :: Level-triggered start lets the host hold the line without a
+  timing requirement on the pulse width.
+
+*** REQ-002 Busy covers the whole operation
+:PROPERTIES:
+:CUSTOM_ID: REQ-002
+:METHOD:   T
+:TEST:     [[file:demo_vplan.org::#TC-03][TC-03]]
+:DESIGN:   [[file:demo_hdd.org::#fsm][FSM]]
+:ICD:      [[file:demo_icd.org::#reg-status][STATUS]]
+:MONITOR:  p_tw_busy_follows_start
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: The block shall assert ~busy~ on the clock after ~start~ is
+  sampled high and keep it asserted until the clock in which ~done~ pulses.
+- Rationale :: Software polls one bit to know whether it may write.
+
+*** REQ-003 Illegal input is ignored
+:PROPERTIES:
+:CUSTOM_ID: REQ-003
+:METHOD:   T
+:TEST:     [[file:demo_vplan.org::#TC-10][TC-10]]
+:DESIGN:   [[file:demo_hdd.org::#fsm][FSM]]
+:ICD:      [[file:demo_icd.org::#illegal-sequences][illegal sequences]]
+:MONITOR:  p_tw_no_start_while_busy
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: A ~start~ while ~busy~ is asserted shall have no effect on the
+  running operation or on its result.
+- Rationale :: A watchdog reboot or a context switch can replay commands.
+  The hardware stays correct without the software being correct.
+
+** Interface
+
+*** REQ-020 Register interface
+:PROPERTIES:
+:CUSTOM_ID: REQ-020
+:METHOD:   T
+:TEST:     [[file:demo_vplan.org::#TC-12][TC-12]]
+:DESIGN:   [[file:demo_hdd.org::#register-interface][register interface]]
+:ICD:      [[file:demo_icd.org::#registers][register map]]
+:MONITOR:
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: The block shall expose the [[file:demo_icd.org::#registers][register map of the ICD]] on an
+  AXI4-Lite slave port.
+- Rationale :: One bus for all blocks in the project; one BFM to test it.
+
+*** REQ-021 Version read-back
+:PROPERTIES:
+:CUSTOM_ID: REQ-021
+:METHOD:   T
+:TEST:     [[file:demo_vplan.org::#TC-01][TC-01]]
+:DESIGN:   [[file:demo_hdd.org::#register-interface][register interface]]
+:ICD:      [[file:demo_icd.org::#reg-version][VERSION]]
+:MONITOR:
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: ~VERSION~ shall read the value stated in the ICD of the release.
+- Rationale :: The driver refuses an unknown MAJOR instead of guessing.
+
+** Performance
+
+*** REQ-040 Latency
+:PROPERTIES:
+:CUSTOM_ID: REQ-040
+:METHOD:   T, A
+:TEST:     [[file:demo_vplan.org::#TC-04][TC-04]]
+:DESIGN:   [[file:demo_hdd.org::#structure][operation timer]]
+:ICD:      [[file:demo_icd.org::#latency][latency]]
+:MONITOR:  p_tw_done_within_max
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: ~done~ shall pulse no later than 256 clocks after
+  ~start~ is sampled high.
+- Rationale :: Derived from the system loop time budget of ...; show the
+  calculation here, it is the shield against later "make it faster" requests.
+
+*** REQ-041 Clock frequency
+:PROPERTIES:
+:CUSTOM_ID: REQ-041
+:METHOD:   A
+:TEST:     timing report
+:DESIGN:   [[file:demo_hdd.org::#clocks][clocks]]
+:ICD:      [[file:demo_icd.org::#clocks][clocks]]
+:MONITOR:
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: The block shall meet timing at 100 MHz on the target
+  device with the project constraints.
+- Rationale :: Shared system clock; no second clock domain for this block.
+
+** Resources
+
+*** REQ-050 Resource budget
+:PROPERTIES:
+:CUSTOM_ID: REQ-050
+:METHOD:   A
+:TEST:     utilisation report
+:DESIGN:   [[file:demo_hdd.org::#budget][budget]]
+:ICD:
+:MONITOR:
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: The block shall use at most 1000 LUTs, 1000
+  flip-flops and 0 block RAMs.
+- Rationale :: Share of the device reserved for this block in the system
+  budget.
+
+** Reset and start-up
+
+*** REQ-060 Reset state
+:PROPERTIES:
+:CUSTOM_ID: REQ-060
+:METHOD:   T
+:TEST:     [[file:demo_vplan.org::#TC-01][TC-01]]
+:DESIGN:   [[file:demo_hdd.org::#clocks][REG_RESET]]
+:ICD:      [[file:demo_icd.org::#clocks][resets]]
+:MONITOR:
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: After ~rst~ the block shall be idle with every register at the
+  reset value of the ICD, within 2 clocks of the release of ~rst~.
+- Rationale :: Software may touch the block as soon as the CPU runs.
+
+*** REQ-061 Recovery without hardware reset
+:PROPERTIES:
+:CUSTOM_ID: REQ-061
+:METHOD:   T
+:TEST:     [[file:demo_vplan.org::#TC-11][TC-11]]
+:DESIGN:   [[file:demo_hdd.org::#clocks][SOFT_RST]]
+:ICD:      [[file:demo_icd.org::#recovery][recovery]]
+:MONITOR:  p_tw_soft_rst_aborts
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: Writing ~SOFT_RST~ shall return the block to the reset state
+  from any state, including an error, without a ~rst~.
+- Rationale :: A CPU-only reboot does not reset the fabric ([[file:demo_icd.org::#recovery][ICD, recovery]]).
+
+** Design constraints
+
+*** REQ-080 Language and style
+:PROPERTIES:
+:CUSTOM_ID: REQ-080
+:METHOD:   I
+:TEST:     design review
+:DESIGN:   [[file:demo_hdd.org::#structure][structure]]
+:ICD:
+:MONITOR:
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: The block shall be written in VHDL-2008 in the two-process style
+  with a synchronous, active-high reset.
+- Rationale :: Project coding standard; one reset strategy per design.
+
+*** REQ-081 Self-checking testbench
+:PROPERTIES:
+:CUSTOM_ID: REQ-081
+:METHOD:   I, D
+:TEST:     make test
+:DESIGN:
+:ICD:
+:MONITOR:
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: The block shall ship with a testbench that prints ~TEST PASSED~
+  only when every test case passed and stops with ~severity failure~
+  otherwise.
+- Rationale :: ~make test~ and CI need a verdict, not a waveform.
+
+* Open points
+:PROPERTIES:
+:CUSTOM_ID: open-points
+:END:
+
+| ID | Question | Owner | Due | Resolution |
+|----+----------+-------+-----+------------|
+|    |          |       |     |            |
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

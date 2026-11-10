@@ -1,4 +1,5 @@
 {{!Generic scoreboard (VHDL-2008 generic package): queue of expected values, check_received against the head}}
+{{+tb_util_pkg}}
 {{>header.vhd}}
 
 -- Needs tb_util_pkg.  One instance per stream, at file level or in an

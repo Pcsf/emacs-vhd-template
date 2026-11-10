@@ -1,0 +1,16 @@
+{{!Requirement headline for the SRS, with the properties the traceability matrix reads}}
+{{?id: Requirement ID}}
+{{?title: Requirement, as a short title}}
+*** {{id|REQ-000}} {{title}}
+:PROPERTIES:
+:CUSTOM_ID: {{id}}
+:METHOD:   T
+:TEST:
+:DESIGN:
+:ICD:
+:MONITOR:
+:RESULT:   OPEN
+:STATUS:   proposed
+:END:
+- Shall :: {{_}}
+- Rationale ::

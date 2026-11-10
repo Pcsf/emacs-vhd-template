@@ -1,4 +1,5 @@
 {{!BFM: AXI4-Lite master (write, read, check) with response checking and back-pressure}}
+{{+tb_util_pkg}}
 {{>header.vhd}}
 
 -- Usage (in a testbench, needs tb_util_pkg):

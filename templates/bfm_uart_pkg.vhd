@@ -1,4 +1,5 @@
 {{!BFM: UART transmit / receive / expect, 5-8 data bits, parity, 1-2 stop bits, error injection}}
+{{+tb_util_pkg}}
 {{>header.vhd}}
 
 -- Usage (in a testbench, needs tb_util_pkg):
