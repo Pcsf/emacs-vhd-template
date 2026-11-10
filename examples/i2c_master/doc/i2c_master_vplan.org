@@ -1,0 +1,434 @@
+#+TITLE: Verification plan: i2c_master
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+#+COLUMNS: %ITEM(Test case) %REQUIREMENT %KIND %RESULT
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+How ~i2c_master~ is shown to meet its requirements and its ICD before it
+is released.  Every requirement with method T has a numbered test case
+here, every ICD clause a monitor, and every monitor and good-weather test
+has been made to fail once.
+
+- Version :: 1.0.0
+- Items under test :: ~src/i2c_master.vhd~, ~src/sync_2ff.vhd~
+- Requirements :: [[file:i2c_master_srs.org::#requirements][i2c_master requirements]]
+- Interface :: [[file:i2c_master_icd.org::#scope][i2c_master ICD]]
+- Traceability :: [[file:i2c_master_rtm.org::#matrix][i2c_master traceability matrix]]
+- Results :: [[file:i2c_master_test_report.org::#results][i2c_master test report]]
+
+* Strategy
+:PROPERTIES:
+:CUSTOM_ID: strategy
+:END:
+
+| Level       | What                                           | Tool             | Verdict       |
+|-------------+------------------------------------------------+------------------+---------------|
+| Unit        | ~tb_i2c_master~: test cases, monitors, mutants | GHDL             | ~TEST PASSED~ |
+| Integration | not planned: no parent block here              |                  |               |
+| Static      | CDC, timing and utilisation reports            | Vivado / Quartus | not run       |
+| Hardware    | bus on a board with a real device              | target board     | not run       |
+
+Simulation cannot show metastability, timing, the rise time of a real bus,
+or how the tool maps the code.  Those belong to the static and the hardware
+level, which are open here: the block is verified at unit level only.
+
+The slave in the testbench is the BFM of ~bfm_i2c_pkg~.  It starts again
+at every START, it sends its bits on the falling edge of SCL, and in the
+middle of a byte it waits for the next clock edge without a timeout that
+would matter.  What the plan says about a slave holds for that model.
+
+* Environment
+:PROPERTIES:
+:CUSTOM_ID: environment
+:END:
+
+| Item         | Version / value                                               |
+|--------------+---------------------------------------------------------------|
+| Simulator    | GHDL 6.0.0, mcode code generator, ~--std=08~                  |
+| Build        | ~test/run-example.sh i2c_master~, sources in ~tb/sources.txt~ |
+| Synthesis    | none                                                          |
+| Device       | none                                                          |
+| Clock period | 10 ns                                                         |
+| Generics     | ~G_CLK_HZ~ = 3200, ~G_SCL_HZ~ = 100: C_Q = 8                  |
+| Packages     | ~tb_util_pkg~, ~bfm_i2c_pkg~ (templates of the repository)    |
+
+Run, from the root of the repository, after ~make render~ has written the
+two packages to ~build/rendered/~:
+
+#+BEGIN_EXAMPLE
+W=build/examples/i2c_master/work; mkdir -p $W
+ghdl -a --std=08 --workdir=$W build/rendered/tb_util_pkg.vhd \
+     build/rendered/bfm_i2c_pkg.vhd examples/i2c_master/src/sync_2ff.vhd \
+     examples/i2c_master/src/i2c_master.vhd examples/i2c_master/tb/tb_i2c_master.vhd
+ghdl -e --std=08 --workdir=$W tb_i2c_master
+ghdl -r --std=08 --workdir=$W tb_i2c_master --stop-time=1sec
+#+END_EXAMPLE
+
+- The run ends with ~TEST PASSED~, or with ~TEST FAILED~ and a non-zero exit
+  code.  A watchdog in the testbench ends a run that hangs after 30 ms of
+  simulated time, as a failure.
+- Alerts are counted, not fatal.  A bad-weather test announces the alert of
+  its monitor with ~increment_expected_alerts~; the run passes when the
+  count of every level is the announced one.  The good run has 13 errors,
+  all announced.
+- The monitors sample at the rising edge of ~clk~, so they read what the
+  design read at that edge.  The test cases drive just after a rising edge.
+- The small generics keep a byte at 316 clocks.  The run was repeated with
+  ~C_CLK_HZ~ in the testbench set to 800, 6400 and 12800 (C_Q = 2, 16 and
+  32) and passed each time; those runs are not part of the script.
+
+* Test cases
+:PROPERTIES:
+:CUSTOM_ID: test-cases
+:END:
+
+One behaviour per test case: a headline that says in one sentence what is
+expected, with the requirement or ICD clause it serves as a property.  The
+number is the one in ~tc_start~ in the testbench and in the tag of every
+alert.  TC-01 to TC-09 are good weather, from TC-10 on the stimulus breaks
+the ICD or the bus misbehaves.
+
+** TC-01 After rst the block is ready and both bus lines are released
+:PROPERTIES:
+:CUSTOM_ID: TC-01
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-060][REQ-060]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+Four clocks of ~rst~, then the outputs are checked, and the bus and the
+response port are watched for four SCL periods without a command.
+
+** TC-02 A byte written to a slave that acknowledges reports rsp_nack = 0
+:PROPERTIES:
+:CUSTOM_ID: TC-02
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-001][REQ-001]], [[file:i2c_master_srs.org::#REQ-003][REQ-003]], [[file:i2c_master_srs.org::#REQ-007][REQ-007]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+Address and one data byte with STOP; the slave BFM checks the byte, the bus
+observer counts one START, one STOP and 19 SCL pulses.
+
+** TC-03 A byte that no slave acknowledges reports rsp_nack = 1
+:PROPERTIES:
+:CUSTOM_ID: TC-03
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-003][REQ-003]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+The slave BFM leaves its address unacknowledged.  The transaction stays open
+with SCL low, a command with only ~cmd_stop~ closes it.
+
+** TC-04 Bytes are read with ACK, and with NACK when cmd_nack is set
+:PROPERTIES:
+:CUSTOM_ID: TC-04
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-004][REQ-004]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+Two bytes from the slave BFM.  The ninth bit of each is taken from the bus:
+ACK after the first, NACK after the last.  ~rsp_nack~ stays 0.
+
+** TC-05 Cmd_start in an open transaction makes a repeated START
+:PROPERTIES:
+:CUSTOM_ID: TC-05
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-002][REQ-002]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+Pointer write without STOP, then address with ~cmd_start~, then one byte
+read: two START conditions and one STOP on the bus.
+
+** TC-06 START, byte and STOP each work as a command of their own
+:PROPERTIES:
+:CUSTOM_ID: TC-06
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-005][REQ-005]], [[file:i2c_master_srs.org::#REQ-041][REQ-041]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+START alone, two bytes alone, STOP alone, with the latency of each counted
+in the test as well as by the monitor.
+
+** TC-07 The master waits while a slave holds SCL low
+:PROPERTIES:
+:CUSTOM_ID: TC-07
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-006][REQ-006]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+The slave BFM holds SCL low for 1 us after every byte, in a write and in a
+read.  The longest SCL low seen must be at least that.
+
+** TC-08 A waiting command is taken in the clock of rsp_valid
+:PROPERTIES:
+:CUSTOM_ID: TC-08
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-020][REQ-020]], [[file:i2c_master_srs.org::#REQ-021][REQ-021]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+~cmd_valid~ stays 1 over four commands.  Each must be taken in the clock in
+which the response to the one before is valid.
+
+** TC-09 SCL and the START and STOP timing have the derived numbers
+:PROPERTIES:
+:CUSTOM_ID: TC-09
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-040][REQ-040]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+SCL low, high and period inside a byte, START hold, repeated START and STOP
+setup, and the time from STOP to START, each compared with its formula.
+
+** TC-10 A command changed while it waits is taken with its last values
+:PROPERTIES:
+:CUSTOM_ID: TC-10
+:REQUIREMENT: [[file:i2c_master_icd.org::#cmd-stable][ICD, cmd-stable]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+~cmd_data~ is changed from 0x11 to 0x22 while the block is busy with the
+address.  The slave BFM expects 0x22.
+
+** TC-11 Cmd_read and cmd_write together read a byte
+:PROPERTIES:
+:CUSTOM_ID: TC-11
+:REQUIREMENT: [[file:i2c_master_icd.org::#cmd-rd-wr][ICD, cmd-rd-wr]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+Last command of a read with ~cmd_write~ set as well: the byte of the slave
+must come back and ~rsp_nack~ must be 0.
+
+** TC-12 A command with nothing set is answered and leaves the bus alone
+:PROPERTIES:
+:CUSTOM_ID: TC-12
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-008][REQ-008]], [[file:i2c_master_srs.org::#REQ-022][REQ-022]], [[file:i2c_master_icd.org::#cmd-empty][ICD, cmd-empty]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+Response after 2 clocks, no bus event, ~rsp_data~ still the byte of TC-11.
+
+** TC-13 STOP with no transaction open is answered and leaves the bus alone
+:PROPERTIES:
+:CUSTOM_ID: TC-13
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-008][REQ-008]], [[file:i2c_master_icd.org::#stop-idle][ICD, stop-idle]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+Response after 2 clocks, no bus event.
+
+** TC-14 START and STOP in one command without a byte make the START only
+:PROPERTIES:
+:CUSTOM_ID: TC-14
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-008][REQ-008]], [[file:i2c_master_icd.org::#start-stop-empty][ICD, start-stop-empty]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+One START on the bus, no STOP, SCL and SDA left low; a command with only
+~cmd_stop~ then makes the STOP.
+
+** TC-15 A byte without START on an idle bus is clocked out with no START
+:PROPERTIES:
+:CUSTOM_ID: TC-15
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-008][REQ-008]], [[file:i2c_master_srs.org::#REQ-061][REQ-061]], [[file:i2c_master_icd.org::#byte-no-start][ICD, byte-no-start]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+Nine SCL pulses and no START; SCL stays low; a STOP command does nothing;
+the bus clear command releases the bus.  The bus clear is also run on an
+idle bus.
+
+** TC-16 Rst in a written byte releases the bus at once, the next transfer works
+:PROPERTIES:
+:CUSTOM_ID: TC-16
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-060][REQ-060]], [[file:i2c_master_icd.org::#rst-while-busy][ICD, rst-while-busy]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+~rst~ once with SCL and SDA pulled low and once with SCL high and SDA pulled
+low.  No response, both lines released in the next clock, then a normal
+write is acknowledged.
+
+** TC-17 A command offered while rst is high is lost without a response
+:PROPERTIES:
+:CUSTOM_ID: TC-17
+:REQUIREMENT: [[file:i2c_master_icd.org::#cmd-in-reset][ICD, cmd-in-reset]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+~cmd_valid~ for four clocks inside a six-clock ~rst~: ~cmd_ready~ reads 1,
+nothing reaches the bus, no response.
+
+** TC-18 SDA left low by a slave after rst is freed by the bus clear command
+:PROPERTIES:
+:CUSTOM_ID: TC-18
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-061][REQ-061]], [[file:i2c_master_icd.org::#recovery][ICD, recovery]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+~rst~ while the slave BFM sends a byte of zeros: SDA stays low.  The bus
+clear command frees it and the next write is acknowledged.
+
+** TC-19 With SDA held low a START is not seen and the transfer is lost
+:PROPERTIES:
+:CUSTOM_ID: TC-19
+:REQUIREMENT: [[file:i2c_master_icd.org::#recovery][ICD, recovery]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+Same state, but software starts a transfer at once: no START on the bus,
+address reported NACK, STOP, and the second attempt works.
+
+** TC-20 SCL held low without end keeps the block busy until rst
+:PROPERTIES:
+:CUSTOM_ID: TC-20
+:REQUIREMENT: [[file:i2c_master_srs.org::#REQ-006][REQ-006]], [[file:i2c_master_icd.org::#stretching][ICD, stretching]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+SCL held low for 60 SCL periods in a byte: busy, no response, the byte is
+finished after the release.  Then SCL held again and ~rst~: block idle and
+ready while the line is still low.
+
+* Contract monitors
+:PROPERTIES:
+:CUSTOM_ID: monitors
+:END:
+
+Independent processes in ~tb_i2c_master~ that drive nothing.  Each watches
+one ICD clause and raises an error alert tagged ~[icd#<id>]~ with the ID of
+the clause.  The first fourteen watch what the hardware promises; they
+must stay silent in every test, so each is shown to fire by a mutant of the
+design.  The last eight watch what software owes; each fires in the
+bad-weather test that breaks its clause, exactly once per violation.
+
+| Monitor                 | ICD clause       | Fires in                           |
+|-------------------------+------------------+------------------------------------|
+| ~p_tw_sda_change~       | [[file:i2c_master_icd.org::#sda-change][sda-change]]       | mutant ~sda_change~                |
+| ~p_tw_scl_low~          | [[file:i2c_master_icd.org::#scl-low][scl-low]]          | mutant ~scl_low~                   |
+| ~p_tw_scl_high~         | [[file:i2c_master_icd.org::#scl-high][scl-high]]         | mutant ~scl_high~                  |
+| ~p_tw_start_timing~     | [[file:i2c_master_icd.org::#start-timing][start-timing]]     | mutant ~start_timing~              |
+| ~p_tw_stop_timing~      | [[file:i2c_master_icd.org::#stop-timing][stop-timing]]      | mutant ~stop_timing~               |
+| ~p_tw_sda_setup~        | [[file:i2c_master_icd.org::#sda-setup][sda-setup]]        | mutant ~sda_setup~                 |
+| ~p_tw_sda_hold~         | [[file:i2c_master_icd.org::#sda-hold][sda-hold]]         | mutant ~sda_hold~                  |
+| ~p_tw_stretch_wait~     | [[file:i2c_master_icd.org::#stretch-wait][stretch-wait]]     | mutant ~stretch_wait~              |
+| ~p_tw_rst_release~      | [[file:i2c_master_icd.org::#rst-release][rst-release]]      | mutant ~rst_release~               |
+| ~p_tw_rsp_pulse~        | [[file:i2c_master_icd.org::#rsp-pulse][rsp-pulse]]        | mutant ~rsp_pulse~                 |
+| ~p_tw_rsp_per_cmd~      | [[file:i2c_master_icd.org::#rsp-per-cmd][rsp-per-cmd]]      | mutant ~rsp_per_cmd~               |
+| ~p_tw_ready_busy~       | [[file:i2c_master_icd.org::#ready-busy][ready-busy]]       | mutant ~ready_busy~                |
+| ~p_tw_rsp_stable~       | [[file:i2c_master_icd.org::#rsp-stable][rsp-stable]]       | mutant ~rsp_stable~                |
+| ~p_tw_cmd_latency~      | [[file:i2c_master_icd.org::#cmd-latency][cmd-latency]]      | mutant ~cmd_latency~               |
+| ~p_tw_cmd_stable~       | [[file:i2c_master_icd.org::#cmd-stable][cmd-stable]]       | TC-10                              |
+| ~p_tw_cmd_rd_wr~        | [[file:i2c_master_icd.org::#cmd-rd-wr][cmd-rd-wr]]        | TC-11                              |
+| ~p_tw_cmd_empty~        | [[file:i2c_master_icd.org::#cmd-empty][cmd-empty]]        | TC-12                              |
+| ~p_tw_stop_idle~        | [[file:i2c_master_icd.org::#stop-idle][stop-idle]]        | TC-13, TC-15                       |
+| ~p_tw_start_stop_empty~ | [[file:i2c_master_icd.org::#start-stop-empty][start-stop-empty]] | TC-14                              |
+| ~p_tw_byte_no_start~    | [[file:i2c_master_icd.org::#byte-no-start][byte-no-start]]    | TC-15                              |
+| ~p_tw_cmd_in_reset~     | [[file:i2c_master_icd.org::#cmd-in-reset][cmd-in-reset]]     | TC-17                              |
+| ~p_tw_rst_while_busy~   | [[file:i2c_master_icd.org::#rst-while-busy][rst-while-busy]]   | TC-16 (twice), TC-18, TC-19, TC-20 |
+
+* Mutation checks
+:PROPERTIES:
+:CUSTOM_ID: mutations
+:END:
+
+A monitor or a test that has never failed has not shown it can.  Each line
+of ~tb/mutants.txt~ is a ~sed~ expression that breaks ~src/i2c_master.vhd~
+in one place; the testbench is run against the broken copy and must fail,
+with the text of the last column in its log.  The first fourteen are for
+the monitors that no bad-weather test fires, the others for the
+good-weather test cases.  ~test/run-example.sh i2c_master~ runs them all
+and also refuses a mutant whose expression changes nothing.
+
+| Mutant                | Change to the design                       | Log must contain                                 | Failed |
+|-----------------------+--------------------------------------------+--------------------------------------------------+--------|
+| ~sda_change~          | SDA pulled low in the middle of SCL high   | ~[icd#sda-change]~                               | yes    |
+| ~scl_low~             | Release SCL one quarter early              | ~[icd#scl-low]~                                  | yes    |
+| ~scl_high~            | Second half of SCL high cut to one clock   | ~[icd#scl-high]~                                 | yes    |
+| ~start_timing~        | SCL low one clock after a repeated START   | ~[icd#start-timing]~                             | yes    |
+| ~stop_timing~         | STOP: SDA released together with SCL       | ~[icd#stop-timing]~                              | yes    |
+| ~sda_setup~           | SDA changed in the clock that releases SCL | ~[icd#sda-setup]~                                | yes    |
+| ~sda_hold~            | SDA changed one clock after SCL fell       | ~[icd#sda-hold]~                                 | yes    |
+| ~stretch_wait~        | Remove the wait for SCL to be high         | ~[icd#stretch-wait]~                             | yes    |
+| ~rst_release~         | ~rst~ no longer releases SDA               | ~[icd#rst-release]~                              | yes    |
+| ~rsp_pulse~           | ~rsp_valid~ not cleared after one clock    | ~[icd#rsp-pulse]~                                | yes    |
+| ~rsp_per_cmd~         | No response to a START without a byte      | ~[icd#rsp-per-cmd]~                              | yes    |
+| ~ready_busy~          | ~busy~ falls one clock early               | ~[icd#ready-busy]~                               | yes    |
+| ~rsp_stable~          | ~rsp_nack~ changes at the ACK sample       | ~[icd#rsp-stable]~                               | yes    |
+| ~cmd_latency~         | First bit after a START a quarter early    | ~[icd#cmd-latency]~                              | yes    |
+| ~tc01_reset~          | ~busy~ stuck at 1                          | ~[TC-01] CHECK FAILED: busy after reset~         | yes    |
+| ~tc02_write~          | Byte sent LSB first                        | ~[TC-02] CHECK FAILED: i2c_slave_check TC-02~    | yes    |
+| ~tc03_nack~           | A NACK is never reported                   | ~[TC-03] CHECK FAILED: address not acknowledged~ | yes    |
+| ~tc04_read_ack~       | ACK and NACK of a read swapped             | ~[TC-04] CHECK FAILED: first byte answered~      | yes    |
+| ~tc05_repeated_start~ | No repeated START                          | ~[TC-05] CHECK FAILED: after the repeated START~ | yes    |
+| ~tc06_stop_alone~     | A STOP command alone does nothing          | ~[TC-06] CHECK FAILED: STOP alone~               | yes    |
+| ~tc07_stretch~        | SCL input tied to 1                        | ~[TC-07] [icd#stretch-wait]~                     | yes    |
+| ~tc08_back_to_back~   | ~cmd_ready~ one clock late                 | ~[TC-08] CHECK FAILED: second command taken~     | yes    |
+| ~tc09_scl_rate~       | Quarter period twice as long               | ~[TC-09] CHECK FAILED: SCL period~               | yes    |
+
+A mutant often trips more than one monitor, and a test case before the one
+it is meant for: the check is that the named text is in the log, not that
+it is the only one.
+
+* Coverage
+:PROPERTIES:
+:CUSTOM_ID: coverage
+:END:
+
+- Requirements: every requirement with method T has a test case above; the
+  [[file:i2c_master_rtm.org::#matrix][traceability matrix]] is the check.
+- ICD: every clause with an ID has a monitor in the table above, and the
+  [[file:i2c_master_icd.org::#illegal-sequences][illegal sequences]] each have a bad-weather test.
+- Code: every state and every step is entered in TC-02 to TC-06 (START on
+  an idle bus and repeated, write, read, ACK and NACK, STOP after a byte
+  and alone), the four exits of S_IDLE in TC-02, TC-06 and TC-12.  This is
+  by reading the test cases against the state table of the
+  [[file:i2c_master_hdd.org::#fsm][design description]]; no coverage tool was run.
+- Not covered: an illegal state encoding, a write that another device
+  overrides, ~cmd_valid~ taken away before the command is taken, a command
+  sent while a slave holds SCL low, a bus with a slow rising edge.
+
+* Exit criteria
+:PROPERTIES:
+:CUSTOM_ID: exit-criteria
+:END:
+
+- [X] Every testbench prints its pass verdict
+- [X] Every T requirement has a passing test case
+- [X] Every bad-weather test fires its monitor and only its monitor
+- [X] Every mutation check has failed once
+- [ ] CDC report clean, timing met, utilisation within budget
+- [ ] Hardware smoke test passed
+- [ ] Test report written and signed
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

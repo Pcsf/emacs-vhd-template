@@ -1,0 +1,7 @@
+# name|sed expression applied to src/debounce.vhd|text the failing log must contain
+one_sample_short|s/elsif cnt = C_LIMIT then/elsif cnt = C_LIMIT - 1 then/|[icd#filter]
+count_not_cleared|s/cnt <= 0;                       -- no change requested/null;                           -- no change requested/|[icd#filter]
+synchronizer_bypassed|s/if sync(1) = stable then/if sync(0) = stable then/|[icd#filter]
+never_follows|s/stable <= sync(1);              -- new value held long enough/stable <= stable;               -- new value held long enough/|[icd#latency]
+rearmed_after_change|0,/        cnt    <= 0;/s//        cnt    <= C_LIMIT;/|[icd#min-interval]
+reset_value|s/        stable <= '0';/        stable <= '1';/|[icd#reset]

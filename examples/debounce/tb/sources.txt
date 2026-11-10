@@ -1,0 +1,4 @@
+# Analysis order, paths from the repository root.
+build/rendered/tb_util_pkg.vhd
+examples/debounce/src/debounce.vhd
+examples/debounce/tb/tb_debounce.vhd

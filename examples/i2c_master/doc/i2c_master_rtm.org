@@ -1,0 +1,74 @@
+#+TITLE: Traceability: i2c_master
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+One row per requirement of ~i2c_master~: the design element that
+implements it, the ICD clause that exposes it, the test that verifies it
+and the latest result.  An empty cell is a finding: a requirement nobody
+implemented or tested.  OPEN in the last column means the analysis or
+inspection was not done; nothing of that kind was run for this example.
+
+- Source :: [[file:i2c_master_srs.org::#requirements][i2c_master requirements]]
+- Tests :: [[file:i2c_master_vplan.org::#test-cases][i2c_master verification plan]]
+
+* Matrix
+:PROPERTIES:
+:CUSTOM_ID: matrix
+:END:
+
+# Generated: do not edit the table.  Change the properties of the
+# requirement in the SRS, then press C-c C-c on the next line.
+#+BEGIN: columnview :id "file:i2c_master_srs.org" :skip-empty-rows t
+| Requirement                                     | METHOD | DESIGN             | ICD               | TEST                                           | MONITOR                     | RESULT |
+|-------------------------------------------------+--------+--------------------+-------------------+------------------------------------------------+-----------------------------+--------|
+| REQ-001 START condition                         | T      | [[file:i2c_master_hdd.org::#fsm][S_START]]            | [[file:i2c_master_icd.org::#start-timing][start-timing]]      | [[file:i2c_master_vplan.org::#TC-02][TC-02]]                                          | p_tw_start_timing           | PASS   |
+| REQ-002 Repeated START                          | T      | [[file:i2c_master_hdd.org::#fsm][S_START]]            | [[file:i2c_master_icd.org::#cmd-fields][commands]]          | [[file:i2c_master_vplan.org::#TC-05][TC-05]]                                          | p_tw_start_timing           | PASS   |
+| REQ-003 Write a byte and report the acknowledge | T      | [[file:i2c_master_hdd.org::#datapath][datapath]]           | [[file:i2c_master_icd.org::#response][response]]          | [[file:i2c_master_vplan.org::#TC-02][TC-02]], [[file:i2c_master_vplan.org::#TC-03][TC-03]]                                   |                             | PASS   |
+| REQ-004 Read a byte and answer it               | T      | [[file:i2c_master_hdd.org::#datapath][datapath]]           | [[file:i2c_master_icd.org::#response][response]]          | [[file:i2c_master_vplan.org::#TC-04][TC-04]]                                          |                             | PASS   |
+| REQ-005 STOP condition                          | T      | [[file:i2c_master_hdd.org::#fsm][S_STOP]]             | [[file:i2c_master_icd.org::#stop-timing][stop-timing]]       | [[file:i2c_master_vplan.org::#TC-06][TC-06]]                                          | p_tw_stop_timing            | PASS   |
+| REQ-006 Clock stretching                        | T      | [[file:i2c_master_hdd.org::#timer][quarter timer]]      | [[file:i2c_master_icd.org::#stretch-wait][stretch-wait]]      | [[file:i2c_master_vplan.org::#TC-07][TC-07]], [[file:i2c_master_vplan.org::#TC-20][TC-20]]                                   | p_tw_stretch_wait           | PASS   |
+| REQ-007 SDA moves only while SCL is low         | T      | [[file:i2c_master_hdd.org::#fsm][step sequence]]      | [[file:i2c_master_icd.org::#sda-change][sda-change]]        | [[file:i2c_master_vplan.org::#TC-02][TC-02]]                                          | p_tw_sda_change             | PASS   |
+| REQ-008 Every command is answered               | T      | [[file:i2c_master_hdd.org::#fsm][S_IDLE]]             | [[file:i2c_master_icd.org::#illegal-sequences][illegal sequences]] | [[file:i2c_master_vplan.org::#TC-12][TC-12]], [[file:i2c_master_vplan.org::#TC-13][TC-13]], [[file:i2c_master_vplan.org::#TC-14][TC-14]], [[file:i2c_master_vplan.org::#TC-15][TC-15]]                     | p_tw_rsp_per_cmd            | PASS   |
+| REQ-020 Command handshake                       | T      | [[file:i2c_master_hdd.org::#command-interface][command interface]]  | [[file:i2c_master_icd.org::#ready-busy][ready-busy]]        | [[file:i2c_master_vplan.org::#TC-08][TC-08]]                                          | p_tw_ready_busy             | PASS   |
+| REQ-021 Response pulse                          | T      | [[file:i2c_master_hdd.org::#fsm][S_DONE]]             | [[file:i2c_master_icd.org::#rsp-pulse][rsp-pulse]]         | [[file:i2c_master_vplan.org::#TC-08][TC-08]]                                          | p_tw_rsp_pulse              | PASS   |
+| REQ-022 Response data holds                     | T      | [[file:i2c_master_hdd.org::#structure][rsp_data, rsp_nack]] | [[file:i2c_master_icd.org::#rsp-stable][rsp-stable]]        | [[file:i2c_master_vplan.org::#TC-12][TC-12]]                                          | p_tw_rsp_stable             | PASS   |
+| REQ-023 Open-drain bus pins                     | I      | [[file:i2c_master_hdd.org::#overview][overview]]           | [[file:i2c_master_icd.org::#ports][ports]]             | reading the entity                             |                             | OPEN   |
+| REQ-040 SCL low and high time                   | T      | [[file:i2c_master_hdd.org::#timer][quarter timer]]      | [[file:i2c_master_icd.org::#scl-low][scl-low]], [[file:i2c_master_icd.org::#scl-high][scl-high]] | [[file:i2c_master_vplan.org::#TC-09][TC-09]]                                          | p_tw_scl_low, p_tw_scl_high | PASS   |
+| REQ-041 Command latency                         | T      | [[file:i2c_master_hdd.org::#fsm][control FSM]]        | [[file:i2c_master_icd.org::#cmd-latency][cmd-latency]]       | [[file:i2c_master_vplan.org::#TC-06][TC-06]]                                          | p_tw_cmd_latency            | PASS   |
+| REQ-042 Clock frequency                         | A      | [[file:i2c_master_hdd.org::#clocks][clocks]]             | [[file:i2c_master_icd.org::#clocks][clocks]]            | timing report                                  |                             | OPEN   |
+| REQ-060 Reset state                             | T      | [[file:i2c_master_hdd.org::#clocks][reset]]              | [[file:i2c_master_icd.org::#rst-release][rst-release]]       | [[file:i2c_master_vplan.org::#TC-01][TC-01]], [[file:i2c_master_vplan.org::#TC-16][TC-16]]                                   | p_tw_rst_release            | PASS   |
+| REQ-061 Bus clear                               | T      | [[file:i2c_master_hdd.org::#fsm][S_BYTE]]             | [[file:i2c_master_icd.org::#bus-clear][bus-clear]]         | [[file:i2c_master_vplan.org::#TC-15][TC-15]], [[file:i2c_master_vplan.org::#TC-18][TC-18]]                                   | p_tw_byte_no_start          | PASS   |
+| REQ-080 Language and style                      | I      | [[file:i2c_master_hdd.org::#structure][structure]]          |                   | design review                                  |                             | OPEN   |
+| REQ-081 Synchronized bus inputs                 | I, A   | [[file:i2c_master_hdd.org::#cdc][crossings]]          | [[file:i2c_master_icd.org::#cdc][crossings]]         | CDC report                                     |                             | OPEN   |
+| REQ-082 Self-checking testbench                 | D      |                    | [[file:i2c_master_icd.org::#scope][ICD]]               | run of ~tb_i2c_master~ and of ~tb/mutants.txt~ |                             | PASS   |
+#+END:
+
+* Reverse trace
+:PROPERTIES:
+:CUSTOM_ID: reverse-trace
+:END:
+
+Things that exist without a requirement.  Each one is given a requirement
+or questioned: does the application really need this?
+
+| Design element or test           | Why it exists                            | Action                 |
+|----------------------------------+------------------------------------------+------------------------|
+| ~busy~ port                      | The opposite of ~cmd_ready~ ([[file:i2c_master_icd.org::#ready-busy][ready-busy]]) | Owner to decide        |
+| ~rsp_data~ repeats the last read | ~rx_sh~ is not cleared ([[file:i2c_master_icd.org::#response][response]])        | Documented             |
+| [[file:i2c_master_vplan.org::#TC-10][TC-10]], [[file:i2c_master_vplan.org::#TC-11][TC-11]], [[file:i2c_master_vplan.org::#TC-17][TC-17]]              | Record a broken command                  | Kept: ICD clauses      |
+| [[file:i2c_master_vplan.org::#TC-19][TC-19]]                            | Transfer without recovery                | Kept: a limitation     |
+| Tolerated commands               | Fall out of the state machine            | [[file:i2c_master_srs.org::#open-points][Open points]] OP-2, OP-4 |
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

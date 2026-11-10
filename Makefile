@@ -5,6 +5,7 @@
 #   make test      Elisp tests only
 #   make sim       render + GHDL only
 #   make tdd       new-block bundle on mk/: RED on the skeleton, then GREEN
+#   make examples  the worked examples: testbench passes, every mutant is killed
 
 EMACS ?= emacs
 GHDL  ?= ghdl
@@ -33,9 +34,9 @@ TESTBENCHES := entity_arch_tb two_process_tb axis_skid_tb tb_functional \
 # tb_util_fail with each of these must exit non-zero and print TEST FAILED.
 FAIL_MODES := mismatch limit failure warning
 
-.PHONY: check test render sim tdd clean
+.PHONY: check test render sim tdd examples clean
 
-check: test sim tdd
+check: test sim tdd examples
 
 test:
 	$(EMACS) -Q --batch -L . -l test/vhdl-tpl-test.el \
@@ -91,6 +92,14 @@ tdd:
 	  || { cat $(BUILD)/tdd_green.log; echo "tdd FAILED"; exit 1; }
 	grep -a -q "TEST PASSED" $(BUILD)/tdd_green.log
 	@echo "tdd: RED on the skeleton, GREEN after one line of comb"
+
+# The worked examples under examples/: each testbench must pass, and each
+# mutant of the design listed in its tb/mutants.txt must be caught by the
+# monitor or test the list names.
+EXAMPLES := debounce i2c_master
+
+examples: render
+	@set -e; for e in $(EXAMPLES); do GHDL=$(GHDL) test/run-example.sh $$e; done
 
 clean:
 	rm -rf $(BUILD)

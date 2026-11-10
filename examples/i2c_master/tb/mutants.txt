@@ -1,0 +1,28 @@
+# name|sed expression applied to src/i2c_master.vhd|text the failing run's log must contain
+#
+# One mutant for each monitor that no bad-weather test fires.
+sda_change|/when S_BYTE =>/,/when S_STOP =>/s/v.step := 3;/v.step := 3; v.sda_oe := '1';/|[icd#sda-change]
+scl_low|/when S_BYTE =>/,/when S_STOP =>/s/v.step := 1;/v.step := 1; v.scl_oe := '0';/|[icd#scl-low]
+scl_high|/when S_BYTE =>/,/when S_STOP =>/s/v.step := 3;/v.step := 3; v.timer := 0;/|[icd#scl-high]
+start_timing|/when S_START =>/,/when S_BYTE =>/s/v.step   := 3;/v.step   := 3; v.timer := 0;/|[icd#start-timing]
+stop_timing|/when S_STOP =>/,/when S_DONE =>/s/v.scl_oe := '0';/v.scl_oe := '0'; v.sda_oe := '0';/|[icd#stop-timing]
+sda_setup|/when S_BYTE =>/,/when S_STOP =>/s/v.scl_oe := '0';/v.scl_oe := '0'; v.sda_oe := not r.sda_oe;/|[icd#sda-setup]
+sda_hold|/when S_BYTE =>/,/when S_STOP =>/s/v.step := 4;/v.step := 4; v.timer := 0;/|[icd#sda-hold]
+stretch_wait|s/if r.scl_oe = '0' and scl_s = '0' then/if false then/|[icd#stretch-wait]
+rst_release|/if rst = '1' then/,/end if;/s/v.sda_oe     := '0';/v.sda_oe     := r.sda_oe;/|[icd#rst-release]
+rsp_pulse|s/^    v.rsp_valid := '0';/    v.rsp_valid := r.rsp_valid;/|[icd#rsp-pulse]
+rsp_per_cmd|/when S_START =>/,/when S_BYTE =>/s/v.state := S_DONE;/v.state := S_IDLE;/|[icd#rsp-per-cmd]
+ready_busy|s/busy      <= '0' when r.state = S_IDLE else '1';/busy      <= '0' when r.state = S_IDLE or r.state = S_DONE else '1';/|[icd#ready-busy]
+rsp_stable|s/v.ack_err := sda_s;/v.ack_err := sda_s; v.rsp_nack := sda_s;/|[icd#rsp-stable]
+cmd_latency|/when S_START =>/,/when S_BYTE =>/s/v.state := S_BYTE;/v.state := S_BYTE; v.timer := 0;/|[icd#cmd-latency]
+#
+# One mutant for each good-weather test case.
+tc01_reset|s/busy      <= '0' when r.state = S_IDLE else '1';/busy      <= '1';/|[TC-01] CHECK FAILED: busy after reset
+tc02_write|s/not r.tx_sh(7 - r.bit_idx);/not r.tx_sh(r.bit_idx);/|[TC-02] CHECK FAILED: i2c_slave_check TC-02
+tc03_nack|s/v.ack_err := sda_s;/v.ack_err := '0';/|[TC-03] CHECK FAILED: address not acknowledged
+tc04_read_ack|s/v.sda_oe := not r.nack;/v.sda_oe := r.nack;/|[TC-04] CHECK FAILED: first byte answered
+tc05_repeated_start|s/if r.bus_active = '1' then /if false then /|[TC-05] CHECK FAILED: after the repeated START
+tc06_stop_alone|s/elsif cmd_stop = '1' and r.bus_active = '1' then/elsif false then/|[TC-06] CHECK FAILED: STOP alone
+tc07_stretch|s/d => scl_i, q => scl_s/d => '1', q => scl_s/|[TC-07] [icd#stretch-wait]
+tc08_back_to_back|s/cmd_ready <= '1' when r.state = S_IDLE else '0';/cmd_ready <= '1' when r.state = S_IDLE and r.rsp_valid = '0' else '0';/|[TC-08] CHECK FAILED: second command taken
+tc09_scl_rate|s/G_CLK_HZ \/ (4 \* G_SCL_HZ);/G_CLK_HZ \/ (2 * G_SCL_HZ);/|[TC-09] CHECK FAILED: SCL period

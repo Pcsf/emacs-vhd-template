@@ -1,0 +1,702 @@
+#+TITLE: ICD: i2c_master
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+This document is the contract between ~i2c_master~ and everything that talks
+to it: the user logic or software that sends commands, and the I2C bus with
+its slaves.  It says what can be observed and relied on at the boundary, not
+how the block works inside (that is the design description).  A clause here
+is binding on both sides: the hardware is tested against it, and software
+that breaks it is wrong even when it happens to work.
+
+Every clause that can be checked is a heading of its own.  The testbench
+has one monitor per clause; when a clause is broken the monitor prints
+~[icd#<id>]~ with the ID of that heading.  The behaviour written here was
+seen in simulation with the testbench generics (C_Q = 8, see
+[[#bus-timing][I2C bus timing]]); where a statement comes from reading the VHDL only, it
+says so.
+
+- Block :: ~src/i2c_master.vhd~, with ~src/sync_2ff.vhd~
+- Version :: 1.0.0
+- Requirements :: [[file:i2c_master_srs.org::#requirements][i2c_master requirements]]
+- Design :: [[file:i2c_master_hdd.org::#overview][i2c_master design description]]
+- Enforced by :: ~tb/tb_i2c_master.vhd~; the ~p_tw_*~ processes named below
+  watch the interface and raise an alert on a violation
+- Not supported :: multi-master arbitration and 10-bit addresses (stated in
+  the header of the VHDL, not tested)
+
+* Physical boundary
+:PROPERTIES:
+:CUSTOM_ID: boundary
+:END:
+
+** Ports
+:PROPERTIES:
+:CUSTOM_ID: ports
+:END:
+
+# Read from the entity: C-c C-c on the next line after the VHDL changed.
+# The descriptions are the comments of the port declarations, so fix a
+# description in the VHDL, not here.
+#+BEGIN: vhdl-ports :file "../src/i2c_master.vhd"
+| Port      | Dir | Width | Description                       |
+|-----------+-----+-------+-----------------------------------|
+| clk       | in  |     1 |                                   |
+| rst       | in  |     1 | synchronous, active high          |
+| cmd_valid | in  |     1 |                                   |
+| cmd_ready | out |     1 |                                   |
+| cmd_start | in  |     1 | (repeated) START first            |
+| cmd_stop  | in  |     1 | STOP last                         |
+| cmd_read  | in  |     1 | read a byte ...                   |
+| cmd_write | in  |     1 | ... or write one                  |
+| cmd_nack  | in  |     1 | read: answer NACK (last byte)     |
+| cmd_data  | in  |     8 | byte to write                     |
+| rsp_valid | out |     1 |                                   |
+| rsp_data  | out |     8 | byte read                         |
+| rsp_nack  | out |     1 | byte written was not acknowledged |
+| busy      | out |     1 |                                   |
+| scl_i     | in  |     1 |                                   |
+| scl_oe    | out |     1 |                                   |
+| sda_i     | in  |     1 |                                   |
+| sda_oe    | out |     1 |                                   |
+#+END:
+
+- ~G_CLK_HZ~ (default 100_000_000) is the frequency of ~clk~, ~G_SCL_HZ~
+  (default 100_000) the wanted SCL frequency.  All timing below follows
+  from the two.
+- The bus pins are open drain.  ~scl_oe~ = 1 pulls SCL low, 0 releases it;
+  the block never drives a line high.  At the top level:
+  ~scl_pad <= '0' when scl_oe = '1' else 'Z'~ and ~scl_i <= scl_pad~, the same
+  for SDA.  Both lines need a pull-up.
+- ~scl_i~ and ~sda_i~ must read the line itself, not ~scl_oe~: the block
+  waits for SCL to be high on the line.
+
+** Clocks and resets
+:PROPERTIES:
+:CUSTOM_ID: clocks
+:END:
+
+| Clock | Frequency                     | Source    | Drives          |
+|-------+-------------------------------+-----------+-----------------|
+| clk   | ~G_CLK_HZ~, >= 8 * ~G_SCL_HZ~ | top level | the whole block |
+
+| Reset | Active | Synchronous to | Minimum length | Resets                          |
+|-------+--------+----------------+----------------+---------------------------------|
+| rst   | high   | clk            | 1 clock        | the control state, listed below |
+
+- ~rst~ resets the state machine, both output enables, the flag that says a
+  transaction is open, and ~rsp_valid~.
+- ~G_CLK_HZ~ below 8 * ~G_SCL_HZ~ stops elaboration with
+  "G_CLK_HZ must be at least 8 * G_SCL_HZ" (seen with 4 * ~G_SCL_HZ~).  The
+  testbench passes at 8, 32, 64 and 128 times ~G_SCL_HZ~.
+- ~rst~ was simulated 2, 4 and 6 clocks long.  One clock is enough by design:
+  it is sampled like any other input.
+- ~rst~ does not reset ~rsp_data~ and ~rsp_nack~ ([[#rsp-stable][they keep their value]]),
+  the shift registers, the quarter timer and the two synchronizers.
+- What the outputs do after ~rst~ is the clause [[#rst-release][rst-release]].
+- A CPU-only reset (watchdog, debugger) does not reset this block.  See
+  [[#recovery][the recovery sequence]].
+
+** Clock domain crossings
+:PROPERTIES:
+:CUSTOM_ID: cdc
+:END:
+
+| From clock    | To clock | Signal(s)        | Structure            | Constraint             |
+|---------------+----------+------------------+----------------------+------------------------|
+| none: the bus | clk      | ~scl_i~, ~sda_i~ | ~sync_2ff~, 2 stages | path to the first flop |
+
+The command and response ports are synchronous to ~clk~.  The crossing is
+owned by this block: the two synchronizers are inside it, and the top level
+connects the pads and adds nothing.  The path from each pad to the first
+flop of its synchronizer needs a false path or a maximum delay, as the
+header of ~sync_2ff.vhd~ says.
+
+* Register map
+:PROPERTIES:
+:CUSTOM_ID: registers
+:END:
+
+None.  The block has no registers and no bus interface.  It is driven by
+the command and response ports described next; a register wrapper, if the
+system needs one, is a block of its own with its own ICD.
+
+* Command and response interface
+:PROPERTIES:
+:CUSTOM_ID: commands
+:END:
+
+One command moves at most one byte: an optional START first, then a byte
+read or written, then an optional STOP.  Each command taken is answered by
+one response.
+
+** Handshake
+:PROPERTIES:
+:CUSTOM_ID: handshake
+:END:
+
+A command is taken at the rising edge of ~clk~ at which ~cmd_valid~ and
+~cmd_ready~ are both 1 and ~rst~ is 0.  All ~cmd_*~ fields are sampled at
+that edge and at no other time.  ~cmd_data~ is used by a write only,
+~cmd_nack~ by a read only.
+
+*** ready-busy: cmd_ready is the opposite of busy
+:PROPERTIES:
+:CUSTOM_ID: ready-busy
+:END:
+
+~cmd_ready~ = not ~busy~ in every clock.  ~busy~ is 1 from the clock after
+a command is taken up to the clock before ~rsp_valid~, and 0 otherwise.  So
+~cmd_ready~ is 1 in the clock of ~rsp_valid~, and a command that is already
+waiting is taken in that same clock ([[file:i2c_master_vplan.org::#TC-08][TC-08]]).
+Enforced by ~p_tw_ready_busy~ in every test case.
+
+** Commands
+:PROPERTIES:
+:CUSTOM_ID: cmd-fields
+:END:
+
+"Open" means a START has been made and no STOP yet; the block then holds
+SCL low between commands.
+
+| start | stop | read or write | Transaction | What the block does                           |
+|-------+------+---------------+-------------+-----------------------------------------------|
+|     1 |    0 | none          | not open    | START; SCL and SDA stay low                   |
+|     1 |    0 | none          | open        | repeated START                                |
+|     0 |    0 | write         | open        | writes ~cmd_data~, MSB first, reads the ACK   |
+|     0 |    0 | read          | open        | reads a byte; answers NACK if ~cmd_nack~ = 1, |
+|       |      |               |             | ACK otherwise                                 |
+|     1 | 0, 1 | one of them   | any         | START or repeated START, then the byte        |
+|  0, 1 |    1 | one of them   | open        | the byte, then STOP                           |
+|     0 |    1 | none          | open        | STOP                                          |
+|     0 |    1 | read          | not open    | with ~cmd_nack~ = 1: [[#bus-clear][bus clear]]                |
+
+Every other combination is in [[#illegal-sequences][Illegal sequences]]: the block
+tolerates it, and the table there says what it does.
+
+The address is a normal write: ~cmd_data~ = address & R/W bit, with
+~cmd_start~.  Its response tells whether a slave answered.
+
+*** bus-clear: nine clocks and a STOP without a START
+:PROPERTIES:
+:CUSTOM_ID: bus-clear
+:END:
+
+A command with ~cmd_read~, ~cmd_nack~ and ~cmd_stop~ set, ~cmd_start~ and
+~cmd_write~ clear, taken while no transaction is open, makes nine SCL
+pulses with SDA released, then a STOP.  No START is made, so slaves take it
+as no transfer.  On an idle bus ~rsp_data~ is 0xFF.  It is the recovery
+tool of this block, see [[#recovery][the recovery sequence]] ([[file:i2c_master_vplan.org::#TC-15][TC-15]], [[file:i2c_master_vplan.org::#TC-18][TC-18]]).
+
+** Response
+:PROPERTIES:
+:CUSTOM_ID: response
+:END:
+
+- ~rsp_data~ :: the byte read, for a command with ~cmd_read~.  For any
+  other command it repeats the byte read last ([[file:i2c_master_vplan.org::#TC-12][TC-12]]).
+- ~rsp_nack~ :: 1 when the byte written was not acknowledged.  0 for every
+  other command, reads included, also a read answered with NACK ([[file:i2c_master_vplan.org::#TC-04][TC-04]]).
+
+*** rsp-pulse: rsp_valid is one clock wide
+:PROPERTIES:
+:CUSTOM_ID: rsp-pulse
+:END:
+
+~rsp_valid~ is 1 for exactly one clock per response.
+Enforced by ~p_tw_rsp_pulse~ in every test case, first in [[file:i2c_master_vplan.org::#TC-02][TC-02]].
+
+*** rsp-per-cmd: one response for each command taken
+:PROPERTIES:
+:CUSTOM_ID: rsp-per-cmd
+:END:
+
+Every command taken is answered by exactly one ~rsp_valid~ pulse before the
+next command is taken, and there is no pulse without a command.  The only
+exception is a command cut short by ~rst~: it gets no response.
+Enforced by ~p_tw_rsp_per_cmd~; the count is also checked in [[file:i2c_master_vplan.org::#TC-08][TC-08]], the
+missing response after ~rst~ in [[file:i2c_master_vplan.org::#TC-16][TC-16]].
+
+*** rsp-stable: rsp_data and rsp_nack hold between responses
+:PROPERTIES:
+:CUSTOM_ID: rsp-stable
+:END:
+
+~rsp_data~ and ~rsp_nack~ change only in a clock in which ~rsp_valid~ is 1,
+and keep their value until the next response, across ~rst~ too (seen for
+~rsp_data~ in [[file:i2c_master_vplan.org::#TC-16][TC-16]]).  Software may read them late.
+Enforced by ~p_tw_rsp_stable~.
+
+* Timing contracts
+:PROPERTIES:
+:CUSTOM_ID: timing
+:END:
+
+** I2C bus timing
+:PROPERTIES:
+:CUSTOM_ID: bus-timing
+:END:
+
+All numbers are in clocks of ~clk~ and follow from one constant, the
+quarter period:
+
+: C_Q = G_CLK_HZ / (4 * G_SCL_HZ), rounded down, at least 2
+
+The block reads SCL through a two-stage synchronizer and waits for the line
+to be high, which adds 2 clocks to every phase that starts with SCL being
+released.  "Measured" is what the testbench saw with C_Q = 8 and a bus that
+rises within one clock; a slow rising edge or a stretching slave adds to
+the "high" side only.
+
+| Quantity                           | Clocks      | Measured, C_Q = 8 | Default generics, 10 ns |
+|------------------------------------+-------------+-------------------+-------------------------|
+| SCL low                            | >= 2 * C_Q  |                16 | 5.00 us                 |
+| SCL high                           | >= 2 * C_Q  |                18 | 5.02 us                 |
+| SCL period inside a byte           | 4 * C_Q + 2 |                34 | 10.02 us (99.8 kHz)     |
+| SDA setup before SCL rises         | >= C_Q      |                   | 2.50 us                 |
+| SDA hold after SCL falls           | >= C_Q      |                   | 2.50 us                 |
+| START: SDA low before SCL falls    | >= C_Q      |                 8 | 2.50 us                 |
+| Repeated START: SCL high before it | >= C_Q      |                10 | 2.52 us                 |
+| STOP: SCL high before SDA rises    | >= C_Q      |                10 | 2.52 us                 |
+| STOP to the next START             | >= C_Q      |                10 | 2.52 us                 |
+
+- The column for the default generics (C_Q = 250) is calculated, not
+  simulated.
+- SCL is a little slower than ~G_SCL_HZ~ when the division is exact.  When
+  the division leaves a fraction above one half, the period of
+  4 * C_Q + 2 clocks is shorter than the nominal one and SCL is faster
+  than ~G_SCL_HZ~: a ratio of 7.75 gives C_Q = 7 and 30 clocks instead of
+  31.  This is arithmetic on the formula, not a simulation result.
+- Between two bytes SCL is low for longer: 3 * C_Q + 2 clocks when the next
+  command is already waiting (26 measured in [[file:i2c_master_vplan.org::#TC-08][TC-08]]), and for as long as
+  software takes otherwise.
+- START hold, the setup of a repeated START and of a STOP, and the time
+  from a STOP to the next START are one quarter period, half of the SCL low
+  time.  At 100 kHz that is below the Standard-mode minimum of the I2C
+  specification: see [[#spec-timing][Comparison with the I2C specification]].
+
+*** Comparison with the I2C specification
+:PROPERTIES:
+:CUSTOM_ID: spec-timing
+:END:
+
+Minimum times of the I2C-bus specification (NXP UM10204, Rev. 7.0,
+1 October 2021, Table 11) against what the block makes with the default
+generics (100 MHz, 100 kHz, C_Q = 250).  The block's values are the
+calculated column of the table above.
+
+| Symbol  | Meaning                 | Standard-mode min | This block | Met |
+|---------+-------------------------+-------------------+------------+-----|
+| tLOW    | SCL low                 | 4.7 us            | 5.00 us    | yes |
+| tHIGH   | SCL high                | 4.0 us            | 5.02 us    | yes |
+| tHD;STA | START hold              | 4.0 us            | 2.50 us    | no  |
+| tSU;STA | repeated START setup    | 4.7 us            | 2.52 us    | no  |
+| tSU;STO | STOP setup              | 4.0 us            | 2.52 us    | no  |
+| tBUF    | bus free, STOP to START | 4.7 us            | 2.52 us    | no  |
+| tSU;DAT | data setup              | 250 ns            | 2.50 us    | yes |
+
+The four START and STOP times are about half of what Standard-mode asks
+for.  The slave model of the testbench does not check them, so every test
+passes.  A real Standard-mode device is entitled to miss such a START or
+STOP.  Until the block is changed, the only setting that meets all four at
+a 100 kHz device is a slower clock: ~G_SCL_HZ~ of 50 000 or less gives
+C_Q >= 500 and 5.0 us for each of them.  That workaround is calculated from
+the formulas, not simulated.
+
+The same comparison for Fast-mode (minimums 0.6 us for tHD;STA, tSU;STA
+and tSU;STO, 1.3 us for tLOW and tBUF) was not worked out for this
+document.
+
+*** scl-low: SCL is held low for at least 2 * C_Q clocks
+:PROPERTIES:
+:CUSTOM_ID: scl-low
+:END:
+
+Whenever the master pulls SCL low, it keeps it low for at least 2 * C_Q
+clocks before it releases it.  Enforced by ~p_tw_scl_low~, measured in
+[[file:i2c_master_vplan.org::#TC-09][TC-09]].
+
+*** scl-high: SCL is high for at least 2 * C_Q clocks
+:PROPERTIES:
+:CUSTOM_ID: scl-high
+:END:
+
+The master pulls SCL low only after the line has read high for at least
+2 * C_Q clocks in a row.  Enforced by ~p_tw_scl_high~, measured in [[file:i2c_master_vplan.org::#TC-09][TC-09]].
+
+*** sda-setup: SDA is stable C_Q clocks before SCL is released
+:PROPERTIES:
+:CUSTOM_ID: sda-setup
+:END:
+
+The master does not change ~sda_oe~ in the C_Q clocks before it releases
+SCL.  Enforced by ~p_tw_sda_setup~.
+
+*** sda-hold: SDA changes C_Q clocks after SCL was pulled low
+:PROPERTIES:
+:CUSTOM_ID: sda-hold
+:END:
+
+While the master holds SCL low, it changes ~sda_oe~ no earlier than C_Q
+clocks after it pulled SCL low.  Enforced by ~p_tw_sda_hold~.
+
+*** sda-change: SDA moves while SCL is high only for a START or STOP
+:PROPERTIES:
+:CUSTOM_ID: sda-change
+:END:
+
+The master changes ~sda_oe~ while SCL is high only to make the START or the
+STOP that the command taken last asked for, each at most once per command.
+The release of both lines by ~rst~ is the exception.
+Enforced by ~p_tw_sda_change~; the START and STOP on the bus are counted
+in every test case from [[file:i2c_master_vplan.org::#TC-02][TC-02]] on.
+
+*** start-timing: setup and hold of a START
+:PROPERTIES:
+:CUSTOM_ID: start-timing
+:END:
+
+The master pulls SDA low for a START only after SCL has been high and SDA
+released for at least C_Q clocks, and pulls SCL low no earlier than C_Q
+clocks after that.  Enforced by ~p_tw_start_timing~, measured in [[file:i2c_master_vplan.org::#TC-09][TC-09]].
+
+*** stop-timing: setup of a STOP and the time after it
+:PROPERTIES:
+:CUSTOM_ID: stop-timing
+:END:
+
+The master releases SDA for a STOP only after SCL has been high for at
+least C_Q clocks, and drives neither line again for at least C_Q clocks.
+Enforced by ~p_tw_stop_timing~, measured in [[file:i2c_master_vplan.org::#TC-09][TC-09]].
+
+** Clock stretching
+:PROPERTIES:
+:CUSTOM_ID: stretching
+:END:
+
+A slave may hold SCL low after the master has released it.  The master
+then waits: every clock in which it reads SCL low restarts the running
+quarter period, so the high phase is complete after the slave lets go.
+There is no limit: with SCL held for 60 SCL periods the block stayed busy,
+sent no response, and finished the byte after the release ([[file:i2c_master_vplan.org::#TC-20][TC-20]]).  A slave
+that never releases SCL keeps the block busy until ~rst~.
+
+*** stretch-wait: nothing moves while a slave holds SCL low
+:PROPERTIES:
+:CUSTOM_ID: stretch-wait
+:END:
+
+While the master has released SCL and the line is low, the master changes
+neither ~scl_oe~ nor ~sda_oe~.  Enforced by ~p_tw_stretch_wait~, exercised
+in [[file:i2c_master_vplan.org::#TC-07][TC-07]] and [[file:i2c_master_vplan.org::#TC-20][TC-20]].
+
+** Normal sequence
+:PROPERTIES:
+:CUSTOM_ID: normal-sequence
+:END:
+
+A command is: set the ~cmd_*~ fields and ~cmd_valid~, hold them until the
+clock in which ~cmd_ready~ is 1, then wait for ~rsp_valid~.
+
+Write N bytes to a device:
+
+1. ~cmd_start~, ~cmd_write~, ~cmd_data~ = address & '0'.
+2. If ~rsp_nack~ = 1 nobody answered: send a command with only ~cmd_stop~
+   and stop here.
+3. ~cmd_write~ with each data byte; ~cmd_stop~ with the last one.  A
+   ~rsp_nack~ = 1 means the device refused the byte; close with ~cmd_stop~.
+
+Read N bytes from a device:
+
+1. ~cmd_start~, ~cmd_write~, ~cmd_data~ = address & '1'; on ~rsp_nack~ = 1
+   send ~cmd_stop~ only and stop.
+2. ~cmd_read~ for each byte, ~rsp_data~ is the byte.
+3. The last byte: ~cmd_read~, ~cmd_nack~ and ~cmd_stop~.
+
+Register read with a repeated START: write the address and the register
+number without ~cmd_stop~, then continue with step 1 of the read: the
+~cmd_start~ in an open transaction makes the repeated START.
+
+** Latency and throughput
+:PROPERTIES:
+:CUSTOM_ID: latency
+:END:
+
+*** cmd-latency: clocks from a command to its response
+:PROPERTIES:
+:CUSTOM_ID: cmd-latency
+:END:
+
+The latency is counted from the edge that takes the command to the edge at
+which ~rsp_valid~ reads 1.  It is the sum of the parts the command has,
+plus one clock for every clock in which the master has released SCL and the
+line is still low (rise time, stretching).
+
+| Part of the command                | Clocks        | C_Q = 8 | Default generics |
+|------------------------------------+---------------+---------+------------------|
+| Always                             | 2             |       2 | 20 ns            |
+| START, no transaction open         | 2 * C_Q       |      16 | 5.00 us          |
+| START, transaction open (repeated) | 5 * C_Q + 2   |      42 | 12.52 us         |
+| Byte, read or write, with its ACK  | 37 * C_Q + 18 |     314 | 92.68 us         |
+| STOP                               | 3 * C_Q + 2   |      26 | 7.52 us          |
+
+A byte alone takes 37 * C_Q + 20 clocks (316 at C_Q = 8), so the block
+moves at most G_CLK_HZ / (37 * C_Q + 20) bytes per second: about 10.8
+thousand with the default generics.  The testbench compares every response
+with this table, exactly; [[file:i2c_master_vplan.org::#TC-06][TC-06]] also counts the START, the byte and the
+STOP on their own.  Enforced by ~p_tw_cmd_latency~.
+
+** Illegal sequences
+:PROPERTIES:
+:CUSTOM_ID: illegal-sequences
+:END:
+
+The block answers every command it takes and never hangs because of a
+command.  These are still violations: each has a clause below, and the
+monitor of the clause fires in the test case the clause names.
+
+| Software does                        | Hardware does                             | Clause           |
+|--------------------------------------+-------------------------------------------+------------------|
+| Changes a command before it is taken | Uses the values of the taking clock       | [[#cmd-stable][cmd-stable]]       |
+| ~cmd_read~ and ~cmd_write~ together  | Reads; the write is ignored               | [[#cmd-rd-wr][cmd-rd-wr]]        |
+| Sends a command with nothing set     | Answers after 2 clocks, bus untouched     | [[#cmd-empty][cmd-empty]]        |
+| STOP with no transaction open        | Answers after 2 clocks, bus untouched     | [[#stop-idle][stop-idle]]        |
+| START and STOP without a byte        | START only, the transaction stays open    | [[#start-stop-empty][start-stop-empty]] |
+| Byte without START, nothing open     | Nine SCL pulses, no START, SCL left low   | [[#byte-no-start][byte-no-start]]    |
+| ~cmd_valid~ while ~rst~ is high      | Command lost, no response                 | [[#cmd-in-reset][cmd-in-reset]]     |
+| ~rst~ while ~busy~                   | Command cut short, lines released at once | [[#rst-while-busy][rst-while-busy]]   |
+
+*** cmd-stable: a command does not change while it waits
+:PROPERTIES:
+:CUSTOM_ID: cmd-stable
+:END:
+
+Once ~cmd_valid~ is 1, software keeps it and all ~cmd_*~ fields unchanged
+until the command is taken.  If a field changes, the block uses the values
+present in the clock in which it takes the command ([[file:i2c_master_vplan.org::#TC-10][TC-10]]: data changed
+from 0x11 to 0x22 while waiting, 0x22 was written).  Taking ~cmd_valid~
+away again was not simulated.
+Monitor: ~p_tw_cmd_stable~.
+
+*** cmd-rd-wr: not read and write in one command
+:PROPERTIES:
+:CUSTOM_ID: cmd-rd-wr
+:END:
+
+Software sets at most one of ~cmd_read~ and ~cmd_write~.  With both set the
+block reads a byte, ignores ~cmd_data~ and reports ~rsp_nack~ = 0 ([[file:i2c_master_vplan.org::#TC-11][TC-11]]).
+Monitor: ~p_tw_cmd_rd_wr~.
+
+*** cmd-empty: a command asks for something
+:PROPERTIES:
+:CUSTOM_ID: cmd-empty
+:END:
+
+Software sets at least one of ~cmd_start~, ~cmd_stop~, ~cmd_read~ and
+~cmd_write~.  A command with none of them is answered after 2 clocks with
+~rsp_nack~ = 0 and does not touch the bus ([[file:i2c_master_vplan.org::#TC-12][TC-12]]).
+Monitor: ~p_tw_cmd_empty~.
+
+*** stop-idle: STOP needs an open transaction
+:PROPERTIES:
+:CUSTOM_ID: stop-idle
+:END:
+
+Software sends a command with only ~cmd_stop~ while a transaction is open,
+not otherwise.  With none open the command is answered after 2 clocks and
+does not touch the bus ([[file:i2c_master_vplan.org::#TC-13][TC-13]]).
+Monitor: ~p_tw_stop_idle~.
+
+*** start-stop-empty: START and STOP need a byte between them
+:PROPERTIES:
+:CUSTOM_ID: start-stop-empty
+:END:
+
+Software does not set ~cmd_start~ and ~cmd_stop~ without ~cmd_read~ or
+~cmd_write~.  If it does, the block makes the START and ignores the STOP:
+the transaction stays open with SCL and SDA low until a command with only
+~cmd_stop~ closes it ([[file:i2c_master_vplan.org::#TC-14][TC-14]]).
+Monitor: ~p_tw_start_stop_empty~.
+
+*** byte-no-start: a byte needs an open transaction
+:PROPERTIES:
+:CUSTOM_ID: byte-no-start
+:END:
+
+Software sends ~cmd_read~ or ~cmd_write~ without ~cmd_start~ only while a
+transaction is open.  The one exception is the [[#bus-clear][bus clear]] command.
+Otherwise the block clocks the byte out with no START before it, so no
+slave answers and a write reports ~rsp_nack~ = 1.  Without ~cmd_stop~ it
+then leaves SCL low but does not count the transaction as open: a command
+with only ~cmd_stop~ is answered and does nothing.  The bus clear command
+releases SCL again ([[file:i2c_master_vplan.org::#TC-15][TC-15]]).
+Monitor: ~p_tw_byte_no_start~.
+
+*** cmd-in-reset: no command while rst is high
+:PROPERTIES:
+:CUSTOM_ID: cmd-in-reset
+:END:
+
+Software keeps ~cmd_valid~ at 0 while ~rst~ is 1.  ~cmd_ready~ reads 1
+during reset, but a command offered then is lost: no bus activity and no
+response ([[file:i2c_master_vplan.org::#TC-17][TC-17]]).
+Monitor: ~p_tw_cmd_in_reset~.
+
+*** rst-while-busy: no reset in the middle of a command
+:PROPERTIES:
+:CUSTOM_ID: rst-while-busy
+:END:
+
+The system does not assert ~rst~ while ~busy~ is 1.  If it does, the
+command is cut short without a response and both lines are released in the
+next clock, wherever the transfer was.  What the slaves then see depends
+on the moment, see [[#recovery][the recovery sequence]] ([[file:i2c_master_vplan.org::#TC-16][TC-16]], [[file:i2c_master_vplan.org::#TC-18][TC-18]], [[file:i2c_master_vplan.org::#TC-20][TC-20]]).
+Monitor: ~p_tw_rst_while_busy~.
+
+* Error and recovery
+:PROPERTIES:
+:CUSTOM_ID: errors
+:END:
+
+** Error causes
+:PROPERTIES:
+:CUSTOM_ID: error-causes
+:END:
+
+The block has one error report, ~rsp_nack~.  It has no status for the
+state of the bus.
+
+| Cause                           | Reported by    | Operation            | Recovery        |
+|---------------------------------+----------------+----------------------+-----------------|
+| Written byte not acknowledged   | ~rsp_nack~ = 1 | Done, stays open     | ~cmd_stop~      |
+| Slave holds SCL low without end | ~busy~ stays 1 | Waits                | ~rst~, [[#recovery][recovery]] |
+| Slave holds SDA low             | nothing        | START not on the bus | [[#bus-clear][bus clear]]       |
+| ~rst~ during a command          | no response    | Cut short            | [[#recovery][recovery]]        |
+
+** Reset
+:PROPERTIES:
+:CUSTOM_ID: reset
+:END:
+
+*** rst-release: one clock after rst the block is idle and off the bus
+:PROPERTIES:
+:CUSTOM_ID: rst-release
+:END:
+
+In the clock after an edge that sampled ~rst~ = 1: ~scl_oe~ = 0,
+~sda_oe~ = 0, ~busy~ = 0, ~cmd_ready~ = 1 and ~rsp_valid~ = 0, whatever the
+block was doing.  The block makes no STOP: it lets go of both lines.
+Enforced by ~p_tw_rst_release~, checked in [[file:i2c_master_vplan.org::#TC-01][TC-01]] and [[file:i2c_master_vplan.org::#TC-16][TC-16]].
+
+What the bus showed in simulation when ~rst~ came in a written byte
+([[file:i2c_master_vplan.org::#TC-16][TC-16]]):
+
+- with SCL and SDA both pulled low by the master, both lines rose in the
+  same clock.  That is neither a START nor a STOP, and which line a real
+  bus lets rise first is not defined;
+- with SCL high and SDA pulled low by the master, SDA rose while SCL was
+  high: a STOP on the bus;
+- in both cases the next transfer after ~rst~ worked with the slave model
+  used, which starts again at every START.
+
+** After a software reboot or watchdog reset
+:PROPERTIES:
+:CUSTOM_ID: recovery
+:END:
+
+The block is not reset when only the CPU restarts.  It may be in the middle
+of a command, it may hold a transaction open with SCL low, and a slave may
+be in the middle of a byte.  After ~rst~ in a byte read, a slave that was
+sending a 0 bit kept SDA low: SCL was high, SDA low, and the block reported
+~cmd_ready~ = 1 ([[file:i2c_master_vplan.org::#TC-18][TC-18]]).  The block does not look at the lines before a
+START and has no status that would tell.
+
+Before the first use after any software start:
+
+1. Pulse ~rst~ if software can reach it.  If not, wait for ~cmd_ready~ = 1
+   and ignore a ~rsp_valid~ that belongs to a command from before the
+   restart.
+2. Send the [[#bus-clear][bus clear]] command: ~cmd_read~, ~cmd_nack~ and ~cmd_stop~.
+3. Wait for its response and discard ~rsp_data~.
+
+What this was seen to do:
+
+- SDA held low by a slave in the middle of a byte of zeros: the nine
+  clocks let the slave finish, it saw NACK and released SDA, the STOP
+  followed, and the next transfer was acknowledged ([[file:i2c_master_vplan.org::#TC-18][TC-18]]).
+- SCL left low by a byte without START: released, STOP made ([[file:i2c_master_vplan.org::#TC-15][TC-15]]).
+- Idle bus: nine clocks and a STOP, nothing else ([[file:i2c_master_vplan.org::#TC-15][TC-15]]).
+- Transaction open: the command is then an ordinary last read with NACK
+  and STOP, as in step 3 of the read in the [[#normal-sequence][normal sequence]].
+
+When software skips it and SDA is held low ([[file:i2c_master_vplan.org::#TC-19][TC-19]]): the START of the first
+transfer was not on the bus, because SDA was low already.  The address
+byte was clocked out and reported ~rsp_nack~ = 1.  Its nine clocks freed
+the slave model as a side effect, the STOP command after it made a STOP,
+and the second attempt worked.  The first transfer is lost, and the only
+sign is a NACK.
+
+No workaround verified for: a slave that needs more than nine clocks to
+let go of SDA, and a slave that holds SCL low without end (~rst~ returns
+the block to idle, the line stays low; [[file:i2c_master_vplan.org::#TC-20][TC-20]]).  A command sent while a
+slave still holds SCL low was not simulated.
+
+** Limitations
+:PROPERTIES:
+:CUSTOM_ID: limitations
+:END:
+
+Stated so that nobody has to find them on the bench.  The VHDL was not
+changed for any of them.
+
+- No bus clear on its own and no look at the bus before a START: see
+  [[#recovery][the recovery sequence]].
+- No timeout on clock stretching: see [[#stretching][Clock stretching]].
+- ~cmd_ready~ is 1 during ~rst~ although a command is lost then:
+  [[#cmd-in-reset][cmd-in-reset]].
+- START and STOP in one command without a byte leave the transaction
+  open: [[#start-stop-empty][start-stop-empty]].
+- A byte without START leaves SCL low in a state that a STOP command does
+  not end: [[#byte-no-start][byte-no-start]].
+- ~rst~ in a transfer makes no STOP: [[#rst-release][rst-release]].
+- START hold, repeated START setup, STOP setup and the time from STOP to
+  START are one quarter period.  At 100 kHz that is 2.5 us, below the
+  Standard-mode minimum of 4.0 to 4.7 us:
+  [[#spec-timing][Comparison with the I2C specification]].
+- SCL is not exactly ~G_SCL_HZ~: the period is 4 * C_Q + 2 clocks plus the
+  rise time of the line.
+- A write is not compared with the line: the block does not notice when
+  another device pulls SDA low during a bit it sends as 1 (read from the
+  VHDL, not tested).
+
+* Change control
+:PROPERTIES:
+:CUSTOM_ID: change-control
+:END:
+
+- A change to a clause moves the version of this document: the first
+  number when existing software or a slave would break, the second for an
+  addition, the third for a correction of the text.
+- The monitor of a clause changes in the same commit as the clause, before
+  the VHDL does.  A new clause gets a monitor, and the monitor a bad-weather
+  test or a line in ~tb/mutants.txt~ that makes it fire.
+
+| Consumer            | Uses                                   | Contact |
+|---------------------+----------------------------------------+---------|
+| User logic / driver | commands, responses, recovery sequence |         |
+| Top level           | ports, pads, pull-ups, constraints     |         |
+| Board               | bus timing, checked with the devices   |         |
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

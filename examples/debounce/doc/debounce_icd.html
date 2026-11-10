@@ -1,0 +1,776 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<!-- 2026-11-10 Tue 22:39 -->
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ICD: debounce</title>
+<meta name="author" content="Pcsf" />
+<meta name="generator" content="Org Mode" />
+<style type="text/css">
+  #content { max-width: 60em; margin: auto; }
+  .title  { text-align: center;
+             margin-bottom: .2em; }
+  .subtitle { text-align: center;
+              font-size: medium;
+              font-weight: bold;
+              margin-top:0; }
+  .todo   { font-family: monospace; color: red; }
+  .done   { font-family: monospace; color: green; }
+  .priority { font-family: monospace; color: orange; }
+  .tag    { background-color: #eee; font-family: monospace;
+            padding: 2px; font-size: 80%; font-weight: normal; }
+  .timestamp { color: #bebebe; }
+  .timestamp-kwd { color: #5f9ea0; }
+  .org-right  { margin-left: auto; margin-right: 0px;  text-align: right; }
+  .org-left   { margin-left: 0px;  margin-right: auto; text-align: left; }
+  .org-center { margin-left: auto; margin-right: auto; text-align: center; }
+  .underline { text-decoration: underline; }
+  #postamble p, #preamble p { font-size: 90%; margin: .2em; }
+  p.verse { margin-left: 3%; }
+  pre {
+    border: 1px solid #e6e6e6;
+    border-radius: 3px;
+    background-color: #f2f2f2;
+    padding: 8pt;
+    font-family: monospace;
+    overflow: auto;
+    margin: 1.2em;
+  }
+  pre.src {
+    position: relative;
+    overflow: auto;
+  }
+  pre.src:before {
+    display: none;
+    position: absolute;
+    top: -8px;
+    right: 12px;
+    padding: 3px;
+    color: #555;
+    background-color: #f2f2f299;
+  }
+  pre.src:hover:before { display: inline; margin-top: 14px;}
+  /* Languages per Org manual */
+  pre.src-asymptote:before { content: 'Asymptote'; }
+  pre.src-awk:before { content: 'Awk'; }
+  pre.src-authinfo::before { content: 'Authinfo'; }
+  pre.src-c:before { content: 'C'; }
+  pre.src-C:before { content: 'C'; }
+  /* pre.src-C++ doesn't work in CSS */
+  pre.src-clojure:before { content: 'Clojure'; }
+  pre.src-css:before { content: 'CSS'; }
+  pre.src-D:before { content: 'D'; }
+  pre.src-ditaa:before { content: 'ditaa'; }
+  pre.src-dot:before { content: 'Graphviz'; }
+  pre.src-calc:before { content: 'Emacs Calc'; }
+  pre.src-emacs-lisp:before { content: 'Emacs Lisp'; }
+  pre.src-fortran:before { content: 'Fortran'; }
+  pre.src-gnuplot:before { content: 'gnuplot'; }
+  pre.src-haskell:before { content: 'Haskell'; }
+  pre.src-hledger:before { content: 'hledger'; }
+  pre.src-java:before { content: 'Java'; }
+  pre.src-js:before { content: 'JavaScript'; }
+  pre.src-latex:before { content: 'LaTeX'; }
+  pre.src-ledger:before { content: 'Ledger'; }
+  pre.src-lisp:before { content: 'Lisp'; }
+  pre.src-lilypond:before { content: 'Lilypond'; }
+  pre.src-lua:before { content: 'Lua'; }
+  pre.src-matlab:before { content: 'MATLAB'; }
+  pre.src-mscgen:before { content: 'Mscgen'; }
+  pre.src-ocaml:before { content: 'Objective Caml'; }
+  pre.src-octave:before { content: 'Octave'; }
+  pre.src-org:before { content: 'Org mode'; }
+  pre.src-oz:before { content: 'OZ'; }
+  pre.src-plantuml:before { content: 'Plantuml'; }
+  pre.src-processing:before { content: 'Processing.js'; }
+  pre.src-python:before { content: 'Python'; }
+  pre.src-R:before { content: 'R'; }
+  pre.src-ruby:before { content: 'Ruby'; }
+  pre.src-sass:before { content: 'Sass'; }
+  pre.src-scheme:before { content: 'Scheme'; }
+  pre.src-screen:before { content: 'Gnu Screen'; }
+  pre.src-sed:before { content: 'Sed'; }
+  pre.src-sh:before { content: 'shell'; }
+  pre.src-sql:before { content: 'SQL'; }
+  pre.src-sqlite:before { content: 'SQLite'; }
+  /* additional languages in org.el's org-babel-load-languages alist */
+  pre.src-forth:before { content: 'Forth'; }
+  pre.src-io:before { content: 'IO'; }
+  pre.src-J:before { content: 'J'; }
+  pre.src-makefile:before { content: 'Makefile'; }
+  pre.src-maxima:before { content: 'Maxima'; }
+  pre.src-perl:before { content: 'Perl'; }
+  pre.src-picolisp:before { content: 'Pico Lisp'; }
+  pre.src-scala:before { content: 'Scala'; }
+  pre.src-shell:before { content: 'Shell Script'; }
+  pre.src-ebnf2ps:before { content: 'ebfn2ps'; }
+  /* additional language identifiers per "defun org-babel-execute"
+       in ob-*.el */
+  pre.src-cpp:before  { content: 'C++'; }
+  pre.src-abc:before  { content: 'ABC'; }
+  pre.src-coq:before  { content: 'Coq'; }
+  pre.src-groovy:before  { content: 'Groovy'; }
+  /* additional language identifiers from org-babel-shell-names in
+     ob-shell.el: ob-shell is the only babel language using a lambda to put
+     the execution function name together. */
+  pre.src-bash:before  { content: 'bash'; }
+  pre.src-csh:before  { content: 'csh'; }
+  pre.src-ash:before  { content: 'ash'; }
+  pre.src-dash:before  { content: 'dash'; }
+  pre.src-ksh:before  { content: 'ksh'; }
+  pre.src-mksh:before  { content: 'mksh'; }
+  pre.src-posh:before  { content: 'posh'; }
+  /* Additional Emacs modes also supported by the LaTeX listings package */
+  pre.src-ada:before { content: 'Ada'; }
+  pre.src-asm:before { content: 'Assembler'; }
+  pre.src-caml:before { content: 'Caml'; }
+  pre.src-delphi:before { content: 'Delphi'; }
+  pre.src-html:before { content: 'HTML'; }
+  pre.src-idl:before { content: 'IDL'; }
+  pre.src-mercury:before { content: 'Mercury'; }
+  pre.src-metapost:before { content: 'MetaPost'; }
+  pre.src-modula-2:before { content: 'Modula-2'; }
+  pre.src-pascal:before { content: 'Pascal'; }
+  pre.src-ps:before { content: 'PostScript'; }
+  pre.src-prolog:before { content: 'Prolog'; }
+  pre.src-simula:before { content: 'Simula'; }
+  pre.src-tcl:before { content: 'tcl'; }
+  pre.src-tex:before { content: 'TeX'; }
+  pre.src-plain-tex:before { content: 'Plain TeX'; }
+  pre.src-verilog:before { content: 'Verilog'; }
+  pre.src-vhdl:before { content: 'VHDL'; }
+  pre.src-xml:before { content: 'XML'; }
+  pre.src-nxml:before { content: 'XML'; }
+  /* add a generic configuration mode; LaTeX export needs an additional
+     (add-to-list 'org-latex-listings-langs '(conf " ")) in .emacs */
+  pre.src-conf:before { content: 'Configuration File'; }
+
+  table { border-collapse:collapse; }
+  caption.t-above { caption-side: top; }
+  caption.t-bottom { caption-side: bottom; }
+  td, th { vertical-align:top;  }
+  th.org-right  { text-align: center;  }
+  th.org-left   { text-align: center;   }
+  th.org-center { text-align: center; }
+  td.org-right  { text-align: right;  }
+  td.org-left   { text-align: left;   }
+  td.org-center { text-align: center; }
+  dt { font-weight: bold; }
+  .footpara { display: inline; }
+  .footdef  { margin-bottom: 1em; }
+  .figure { padding: 1em; }
+  .figure p { text-align: center; }
+  .equation-container {
+    display: table;
+    text-align: center;
+    width: 100%;
+  }
+  .equation {
+    vertical-align: middle;
+  }
+  .equation-label {
+    display: table-cell;
+    text-align: right;
+    vertical-align: middle;
+  }
+  .inlinetask {
+    padding: 10px;
+    border: 2px solid gray;
+    margin: 10px;
+    background: #ffffcc;
+  }
+  #org-div-home-and-up
+   { text-align: right; font-size: 70%; white-space: nowrap; }
+  textarea { overflow-x: auto; }
+  .linenr { font-size: smaller }
+  .code-highlighted { background-color: #ffff00; }
+  .org-info-js_info-navigation { border-style: none; }
+  #org-info-js_console-label
+    { font-size: 10px; font-weight: bold; white-space: nowrap; }
+  .org-info-js_search-highlight
+    { background-color: #ffff00; color: #000000; font-weight: bold; }
+  .org-svg { }
+</style>
+</head>
+<body>
+<div id="content" class="content">
+<h1 class="title">ICD: debounce</h1>
+<div id="table-of-contents" role="doc-toc">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents" role="doc-toc">
+<ul>
+<li><a href="#scope">1. Scope</a></li>
+<li><a href="#boundary">2. Physical boundary</a>
+<ul>
+<li><a href="#ports">2.1. Ports</a></li>
+<li><a href="#numbers">2.2. Generics and derived numbers</a></li>
+<li><a href="#clocks">2.3. Clocks and resets</a></li>
+<li><a href="#cdc">2.4. Clock domain crossings</a></li>
+</ul>
+</li>
+<li><a href="#registers">3. Register map</a></li>
+<li><a href="#timing">4. Timing contracts</a>
+<ul>
+<li><a href="#filter">4.1. Filter</a></li>
+<li><a href="#latency">4.2. Latency</a></li>
+<li><a href="#min-interval">4.3. Minimum interval</a></li>
+<li><a href="#reset">4.4. Reset</a></li>
+<li><a href="#illegal-sequences">4.5. What the neighbours may do</a></li>
+</ul>
+</li>
+<li><a href="#errors">5. Error and recovery</a></li>
+<li><a href="#change-control">6. Change control</a></li>
+<li><a href="#org38f4058">7. Revision history</a></li>
+</ul>
+</div>
+</div>
+<div id="outline-container-scope" class="outline-2">
+<h2 id="scope"><span class="section-number-2">1.</span> Scope</h2>
+<div class="outline-text-2" id="text-scope">
+<p>
+The contract between <code>debounce</code> and its two neighbours: the pin that drives
+<code>din</code> and the logic that reads <code>dout</code>.  The block has no software interface.
+It turns a raw, asynchronous contact (button, switch) into a signal that is
+synchronous to <code>clk</code> and changes only after the contact has rested.
+</p>
+
+<dl class="org-dl">
+<dt>Block</dt><dd><code>src/debounce.vhd</code></dd>
+<dt>Version</dt><dd>1.0.0</dd>
+<dt>Requirements</dt><dd><a href="debounce_srs.html#requirements">debounce requirements</a></dd>
+<dt>Design</dt><dd><a href="debounce_hdd.html#overview">debounce design description</a></dd>
+<dt>Enforced by</dt><dd><code>tb/tb_debounce.vhd</code>; the <code>p_tw_*</code> processes are tripwire
+monitors, one per clause below</dd>
+</dl>
+</div>
+</div>
+<div id="outline-container-boundary" class="outline-2">
+<h2 id="boundary"><span class="section-number-2">2.</span> Physical boundary</h2>
+<div class="outline-text-2" id="text-boundary">
+</div>
+<div id="outline-container-ports" class="outline-3">
+<h3 id="ports"><span class="section-number-3">2.1.</span> Ports</h3>
+<div class="outline-text-3" id="text-ports">
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-right" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">Port</th>
+<th scope="col" class="org-left">Dir</th>
+<th scope="col" class="org-right">Width</th>
+<th scope="col" class="org-left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">clk</td>
+<td class="org-left">in</td>
+<td class="org-right">1</td>
+<td class="org-left">&nbsp;</td>
+</tr>
+
+<tr>
+<td class="org-left">rst</td>
+<td class="org-left">in</td>
+<td class="org-right">1</td>
+<td class="org-left">synchronous, active high</td>
+</tr>
+
+<tr>
+<td class="org-left">din</td>
+<td class="org-left">in</td>
+<td class="org-right">1</td>
+<td class="org-left">raw and asynchronous (button, switch)</td>
+</tr>
+
+<tr>
+<td class="org-left">dout</td>
+<td class="org-left">out</td>
+<td class="org-right">1</td>
+<td class="org-left">debounced, synchronous to clk</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div id="outline-container-numbers" class="outline-3">
+<h3 id="numbers"><span class="section-number-3">2.2.</span> Generics and derived numbers</h3>
+<div class="outline-text-3" id="text-numbers">
+<p>
+Everything below is counted in clocks and follows from one constant of the
+design:
+</p>
+
+<pre class="example" id="org96b9473">
+C_LIMIT = G_CLK_HZ / 1000 * G_DEBOUNCE_MS     (integer arithmetic, divided first)
+</pre>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">Name</th>
+<th scope="col" class="org-left">Value</th>
+<th scope="col" class="org-left">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">SAMPLES</td>
+<td class="org-left">C_LIMIT + 1</td>
+<td class="org-left">equal samples of <code>din</code> needed before <code>dout</code> changes</td>
+</tr>
+
+<tr>
+<td class="org-left">LATENCY</td>
+<td class="org-left">C_LIMIT + 3</td>
+<td class="org-left">clock edges from a change of <code>din</code> to that of <code>dout</code></td>
+</tr>
+
+<tr>
+<td class="org-left">INTERVAL</td>
+<td class="org-left">C_LIMIT + 1</td>
+<td class="org-left">least number of clocks between two changes of <code>dout</code></td>
+</tr>
+</tbody>
+</table>
+
+<p>
+With the defaults (100 MHz, 10 ms) C_LIMIT is 1 000 000, so the contact
+must rest for 1 000 001 clocks: 10 ns longer than the 10 ms asked for.
+</p>
+
+<p>
+Two limits of the arithmetic:
+</p>
+
+<ul class="org-ul">
+<li><code>G_CLK_HZ</code> below 1000 makes C_LIMIT zero, which the design rejects when
+it is elaborated (range error on a <code>positive</code> constant).</li>
+<li><code>G_CLK_HZ</code> is cut to whole kHz, so 32 768 Hz counts as 32 000 Hz and the
+time comes out 2.3 % short.</li>
+</ul>
+</div>
+</div>
+<div id="outline-container-clocks" class="outline-3">
+<h3 id="clocks"><span class="section-number-3">2.3.</span> Clocks and resets</h3>
+<div class="outline-text-3" id="text-clocks">
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">Clock</th>
+<th scope="col" class="org-left">Frequency</th>
+<th scope="col" class="org-left">Source</th>
+<th scope="col" class="org-left">Drives</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">clk</td>
+<td class="org-left"><code>G_CLK_HZ</code></td>
+<td class="org-left">system clock</td>
+<td class="org-left">the whole block</td>
+</tr>
+</tbody>
+</table>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">Reset</th>
+<th scope="col" class="org-left">Active</th>
+<th scope="col" class="org-left">Synchronous to</th>
+<th scope="col" class="org-left">Minimum length</th>
+<th scope="col" class="org-left">Resets</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">rst</td>
+<td class="org-left">high</td>
+<td class="org-left">clk</td>
+<td class="org-left">1 clock</td>
+<td class="org-left"><code>dout</code> and the counter</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+<code>rst</code> does not reset the two synchronizer flip-flops; they keep following
+<code>din</code>.  See <a href="#reset">Reset</a> for what that means at the port.
+</p>
+</div>
+</div>
+<div id="outline-container-cdc" class="outline-3">
+<h3 id="cdc"><span class="section-number-3">2.4.</span> Clock domain crossings</h3>
+<div class="outline-text-3" id="text-cdc">
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">From clock</th>
+<th scope="col" class="org-left">To clock</th>
+<th scope="col" class="org-left">Signal(s)</th>
+<th scope="col" class="org-left">Structure</th>
+<th scope="col" class="org-left">Constraint</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">none (the pin)</td>
+<td class="org-left">clk</td>
+<td class="org-left"><code>din</code></td>
+<td class="org-left">two flip-flops inside this block</td>
+<td class="org-left">false path or input delay on din</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+The crossing belongs to this block: do not put another synchronizer in
+front of it.  The constraint belongs to the project and is not part of this
+example.
+</p>
+</div>
+</div>
+</div>
+<div id="outline-container-registers" class="outline-2">
+<h2 id="registers"><span class="section-number-2">3.</span> Register map</h2>
+<div class="outline-text-2" id="text-registers">
+<p>
+None.  The block has no bus and no registers that software can reach.
+</p>
+</div>
+</div>
+<div id="outline-container-timing" class="outline-2">
+<h2 id="timing"><span class="section-number-2">4.</span> Timing contracts</h2>
+<div class="outline-text-2" id="text-timing">
+<p>
+<code>din</code> is sampled at every rising edge of <code>clk</code>.  A sample is the level of
+<code>din</code> at that edge; what it does between two edges is not seen.
+</p>
+</div>
+<div id="outline-container-filter" class="outline-3">
+<h3 id="filter"><span class="section-number-3">4.1.</span> Filter</h3>
+<div class="outline-text-3" id="text-filter">
+<p>
+<code>dout</code> takes a level only after <code>din</code> showed that level at SAMPLES
+consecutive clock edges.  One sample of the other level starts the count
+again.
+</p>
+
+<p>
+In time, for a pulse on <code>din</code> of width W and a clock period T:
+</p>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">W</th>
+<th scope="col" class="org-left">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">W &lt;= C_LIMIT x T</td>
+<td class="org-left">never passed on</td>
+</tr>
+
+<tr>
+<td class="org-left">W &gt;= (C_LIMIT + 1) x T</td>
+<td class="org-left">always passed on</td>
+</tr>
+
+<tr>
+<td class="org-left">between the two</td>
+<td class="org-left">depends on where the clock edges fall</td>
+</tr>
+</tbody>
+</table>
+
+<p>
+An input that never rests for SAMPLES clocks is never passed on, however
+long that goes on.  That is the purpose of the block, not a fault.
+</p>
+
+<dl class="org-dl">
+<dt>Enforced by</dt><dd><code>p_tw_filter</code></dd>
+</dl>
+</div>
+</div>
+<div id="outline-container-latency" class="outline-3">
+<h3 id="latency"><span class="section-number-3">4.2.</span> Latency</h3>
+<div class="outline-text-3" id="text-latency">
+<p>
+When <code>din</code> changes and then rests, <code>dout</code> follows at the LATENCY-th rising
+edge after the change: the first two edges move the level through the
+synchronizer, the next SAMPLES count it.  In time that is more than
+(C_LIMIT + 2) and at most (C_LIMIT + 3) clock periods.
+</p>
+
+<dl class="org-dl">
+<dt>Enforced by</dt><dd><code>p_tw_latency</code></dd>
+</dl>
+</div>
+</div>
+<div id="outline-container-min-interval" class="outline-3">
+<h3 id="min-interval"><span class="section-number-3">4.3.</span> Minimum interval</h3>
+<div class="outline-text-3" id="text-min-interval">
+<p>
+Two changes of <code>dout</code> are at least INTERVAL clocks apart, so a counter or
+an edge detector behind it never sees a pulse shorter than that.  A change
+of <code>din</code> taken back as soon as it was passed on is ignored like any other
+short pulse.
+</p>
+
+<dl class="org-dl">
+<dt>Enforced by</dt><dd><code>p_tw_min_interval</code></dd>
+</dl>
+</div>
+</div>
+<div id="outline-container-reset" class="outline-3">
+<h3 id="reset"><span class="section-number-3">4.4.</span> Reset</h3>
+<div class="outline-text-3" id="text-reset">
+<p>
+<code>dout</code> is low from the clock after <code>rst</code> is sampled high and stays low
+while <code>rst</code> is high, whatever <code>din</code> does.  The count starts again when
+<code>rst</code> is released.
+</p>
+
+<p>
+A contact that is closed during reset therefore reads as open first:
+<code>dout</code> rises SAMPLES clocks after <code>rst</code> is released.  Logic that acts on a
+rising <code>dout</code> sees an edge that the contact did not make.
+</p>
+
+<dl class="org-dl">
+<dt>Enforced by</dt><dd><code>p_tw_reset</code></dd>
+</dl>
+</div>
+</div>
+<div id="outline-container-illegal-sequences" class="outline-3">
+<h3 id="illegal-sequences"><span class="section-number-3">4.5.</span> What the neighbours may do</h3>
+<div class="outline-text-3" id="text-illegal-sequences">
+<p>
+There is no illegal input: <code>din</code> may do anything at any time.  The table
+lists the behaviour that looks like a fault from outside and is not.
+</p>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">The input does</th>
+<th scope="col" class="org-left">The block does</th>
+<th scope="col" class="org-left">Checked by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">Bounces, each rest shorter than SAMPLES</td>
+<td class="org-left">Nothing, then one change when it rests</td>
+<td class="org-left"><a href="debounce_vplan.html#TC-10">TC-10</a></td>
+</tr>
+
+<tr>
+<td class="org-left">Glitches at any phase of the clock</td>
+<td class="org-left">Nothing</td>
+<td class="org-left"><a href="debounce_vplan.html#TC-11">TC-11</a></td>
+</tr>
+
+<tr>
+<td class="org-left">Toggles without ever resting</td>
+<td class="org-left">Nothing, for as long as it lasts</td>
+<td class="org-left"><a href="debounce_vplan.html#TC-12">TC-12</a></td>
+</tr>
+
+<tr>
+<td class="org-left">Changes back as <code>dout</code> changes</td>
+<td class="org-left">Keeps the new level</td>
+<td class="org-left"><a href="debounce_vplan.html#TC-14">TC-14</a></td>
+</tr>
+
+<tr>
+<td class="org-left"><code>rst</code> while a count is running</td>
+<td class="org-left">Starts the count again</td>
+<td class="org-left"><a href="debounce_vplan.html#TC-13">TC-13</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div id="outline-container-errors" class="outline-2">
+<h2 id="errors"><span class="section-number-2">5.</span> Error and recovery</h2>
+<div class="outline-text-2" id="text-errors">
+<p>
+The block reports no error and cannot lock up: every state is left by
+<code>rst</code> or by a resting input.  It keeps no state that a software restart
+could leave stale.
+</p>
+
+<p>
+A sample taken while <code>din</code> is changing can settle either way.  The two
+synchronizer flip-flops give it a clock to settle; the filter then treats
+it as one more bounce.  Metastability is not simulated and the settling
+time was not analysed for a device.
+</p>
+</div>
+</div>
+<div id="outline-container-change-control" class="outline-2">
+<h2 id="change-control"><span class="section-number-2">6.</span> Change control</h2>
+<div class="outline-text-2" id="text-change-control">
+<p>
+A change to a number in <a href="#numbers">Generics and derived numbers</a> changes the
+constants at the top of <code>tb/tb_debounce.vhd</code> in the same commit; the
+monitors take their limits from those constants.
+</p>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">Consumer</th>
+<th scope="col" class="org-left">Uses</th>
+<th scope="col" class="org-left">Contact</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">Logic behind <code>dout</code></td>
+<td class="org-left">latency, minimum interval, reset</td>
+<td class="org-left">&nbsp;</td>
+</tr>
+
+<tr>
+<td class="org-left">Top level</td>
+<td class="org-left"><code>din</code> pin and its constraint</td>
+<td class="org-left">&nbsp;</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div id="outline-container-org38f4058" class="outline-2">
+<h2 id="org38f4058"><span class="section-number-2">7.</span> Revision history</h2>
+<div class="outline-text-2" id="text-7">
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-right" />
+
+<col  class="org-right" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-right">Version</th>
+<th scope="col" class="org-right">Date</th>
+<th scope="col" class="org-left">Author</th>
+<th scope="col" class="org-left">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-right">1.0.0</td>
+<td class="org-right">2026-11-10</td>
+<td class="org-left">Pcsf</td>
+<td class="org-left">Initial release</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div id="postamble" class="status">
+<p class="date">Date: 2026-11-10</p>
+<p class="author">Author: Pcsf</p>
+<p class="date">Created: 2026-11-10 Tue 22:39</p>
+<p class="validation"><a href="https://validator.w3.org/check?uri=referer">Validate</a></p>
+</div>
+</body>
+</html>

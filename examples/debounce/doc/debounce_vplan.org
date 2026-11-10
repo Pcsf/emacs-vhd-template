@@ -1,0 +1,214 @@
+#+TITLE: Verification plan: debounce
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+#+COLUMNS: %ITEM(Test case) %REQUIREMENT %KIND %RESULT
+
+# Worked example on a real block: the debounce template of emacs-vhd-template,
+# as rendered into ../src/debounce.vhd.  Every number here is checked by
+# ../tb/tb_debounce.vhd; run test/run-example.sh debounce from the repository
+# root.
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+How ~debounce~ is shown to meet its requirements and its ICD.
+
+- Version :: 1.0.0
+- Items under test :: ~src/debounce.vhd~
+- Requirements :: [[file:debounce_srs.org::#requirements][debounce requirements]]
+- Interface :: [[file:debounce_icd.org::#scope][debounce ICD]]
+- Traceability :: [[file:debounce_rtm.org::#matrix][debounce traceability matrix]]
+- Results :: [[file:debounce_test_report.org::#results][debounce test report]]
+
+* Strategy
+:PROPERTIES:
+:CUSTOM_ID: strategy
+:END:
+
+| Level       | What                                         | Tool | Verdict                            |
+|-------------+----------------------------------------------+------+------------------------------------|
+| Unit        | ~tb_debounce~: test cases, monitors, mutants | GHDL | ~TEST PASSED~; every mutant killed |
+| Integration | none: the block has no neighbours of its own |      |                                    |
+| Static      | CDC report, timing report                    |      | not run for this example           |
+| Hardware    | a real contact on a board                    |      | not run for this example           |
+
+Simulation samples a clean ~din~: it cannot show metastability or how long
+a real contact bounces.  Those belong to the static and hardware levels.
+
+* Environment
+:PROPERTIES:
+:CUSTOM_ID: environment
+:END:
+
+| Item         | Version / value                                         |
+|--------------+---------------------------------------------------------|
+| Simulator    | GHDL 6.0.0, ~--std=08~                                  |
+| Build        | ~test/run-example.sh debounce~ from the repository root |
+| Generics     | ~G_CLK_HZ~ = 8000, ~G_DEBOUNCE_MS~ = 1: C_LIMIT = 8     |
+| Clock period | 10 ns                                                   |
+
+The small C_LIMIT keeps the run short; every limit in the testbench is
+written in terms of C_LIMIT.  ~din~ moves 3 ns after a clock edge in most
+tests and at nine other phases in TC-11.  Outputs are checked at the
+falling edge.
+
+* Test cases
+:PROPERTIES:
+:CUSTOM_ID: test-cases
+:END:
+
+** TC-01 Reset leaves dout low
+:PROPERTIES:
+:CUSTOM_ID: TC-01
+:REQUIREMENT: [[file:debounce_srs.org::#REQ-010][REQ-010]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+** TC-02 A rising din is passed on at the LATENCY-th edge, not one earlier
+:PROPERTIES:
+:CUSTOM_ID: TC-02
+:REQUIREMENT: [[file:debounce_srs.org::#REQ-002][REQ-002]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+** TC-03 A falling din is passed on after the same latency
+:PROPERTIES:
+:CUSTOM_ID: TC-03
+:REQUIREMENT: [[file:debounce_srs.org::#REQ-002][REQ-002]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+** TC-04 A pulse one sample short of SAMPLES is ignored
+:PROPERTIES:
+:CUSTOM_ID: TC-04
+:REQUIREMENT: [[file:debounce_srs.org::#REQ-001][REQ-001]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+** TC-05 A pulse of exactly SAMPLES is passed on and released again
+:PROPERTIES:
+:CUSTOM_ID: TC-05
+:REQUIREMENT: [[file:debounce_srs.org::#REQ-002][REQ-002]]
+:KIND:     good weather
+:RESULT:   PASS
+:END:
+
+** TC-10 A bouncing contact gives exactly one change
+:PROPERTIES:
+:CUSTOM_ID: TC-10
+:REQUIREMENT: [[file:debounce_srs.org::#REQ-001][REQ-001]], [[file:debounce_srs.org::#REQ-002][REQ-002]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+** TC-11 Glitches just under the limit, at nine phases of the clock, are ignored
+:PROPERTIES:
+:CUSTOM_ID: TC-11
+:REQUIREMENT: [[file:debounce_srs.org::#REQ-001][REQ-001]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+** TC-12 An input that never rests is never passed on
+:PROPERTIES:
+:CUSTOM_ID: TC-12
+:REQUIREMENT: [[file:debounce_srs.org::#REQ-001][REQ-001]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+** TC-13 Reset during a count starts it again; reset wins over a high din
+:PROPERTIES:
+:CUSTOM_ID: TC-13
+:REQUIREMENT: [[file:debounce_srs.org::#REQ-010][REQ-010]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+** TC-14 A change taken back as dout changes is ignored
+:PROPERTIES:
+:CUSTOM_ID: TC-14
+:REQUIREMENT: [[file:debounce_srs.org::#REQ-001][REQ-001]], [[file:debounce_srs.org::#REQ-003][REQ-003]]
+:KIND:     bad weather
+:RESULT:   PASS
+:END:
+
+* Contract monitors
+:PROPERTIES:
+:CUSTOM_ID: monitors
+:END:
+
+Tripwire monitors: independent processes in ~tb_debounce~ that drive
+nothing and raise an error when their clause is broken.  They sample ~din~
+and ~rst~ at the rising edge, as the design does, and check at the falling
+edge.
+
+All four clauses are promises of the hardware, so no test of the correct
+design makes a monitor fire.  Each one is shown to work by a mutant of the
+design in the next section.
+
+| Monitor             | ICD clause       | Fires in        |
+|---------------------+------------------+-----------------|
+| ~p_tw_filter~       | [[file:debounce_icd.org::#filter][filter]]           | mutants 1, 2, 3 |
+| ~p_tw_latency~      | [[file:debounce_icd.org::#latency][latency]]          | mutant 4        |
+| ~p_tw_min_interval~ | [[file:debounce_icd.org::#min-interval][minimum interval]] | mutant 5        |
+| ~p_tw_reset~        | [[file:debounce_icd.org::#reset][reset]]            | mutant 6        |
+
+* Mutation checks
+:PROPERTIES:
+:CUSTOM_ID: mutations
+:END:
+
+Each row is a line of ~tb/mutants.txt~: the design is changed, the same
+testbench is run, and the run must fail with the monitor named.  The runner
+refuses a mutant that changes nothing and one that survives.
+
+| # | Mutant                  | Change to the design                 | Killed by           | First test to fail |
+|---+-------------------------+--------------------------------------+---------------------+--------------------|
+| 1 | ~one_sample_short~      | level taken at ~cnt = C_LIMIT - 1~   | ~p_tw_filter~       | TC-02              |
+| 2 | ~count_not_cleared~     | count kept when the input returns    | ~p_tw_filter~       | TC-05              |
+| 3 | ~synchronizer_bypassed~ | compare ~sync(0)~, one stage only    | ~p_tw_filter~       | TC-02              |
+| 4 | ~never_follows~         | ~stable~ never updated               | ~p_tw_latency~      | TC-02              |
+| 5 | ~rearmed_after_change~  | count left at C_LIMIT after a change | ~p_tw_min_interval~ | TC-05              |
+| 6 | ~reset_value~           | ~stable~ reset to 1                  | ~p_tw_reset~        | TC-01              |
+
+Mutant 2 passes TC-04, the single short pulse: only a second pulse shows
+that the count was kept.  That is why TC-10 and TC-12 exist.
+
+* Coverage
+:PROPERTIES:
+:CUSTOM_ID: coverage
+:END:
+
+- Requirements: every T requirement has a test case; see the
+  [[file:debounce_rtm.org::#matrix][traceability matrix]].
+- Code: the three branches of the process and the reset are each the target
+  of a mutant that is killed.  No coverage tool was run.
+- Not covered: metastability, and C_LIMIT values other than 8.
+
+* Exit criteria
+:PROPERTIES:
+:CUSTOM_ID: exit-criteria
+:END:
+
+- [X] The testbench prints ~TEST PASSED~
+- [X] Every T requirement has a passing test case
+- [X] Every monitor has fired on a mutant
+- [X] Every mutant is killed
+- [ ] CDC report clean, timing met
+- [ ] Tried with a real contact
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

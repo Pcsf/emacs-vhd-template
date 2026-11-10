@@ -1,0 +1,231 @@
+#+TITLE: ICD: debounce
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+
+# Worked example on a real block: the debounce template of emacs-vhd-template,
+# as rendered into ../src/debounce.vhd.  Every number here is checked by
+# ../tb/tb_debounce.vhd; run test/run-example.sh debounce from the repository
+# root.
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+The contract between ~debounce~ and its two neighbours: the pin that drives
+~din~ and the logic that reads ~dout~.  The block has no software interface.
+It turns a raw, asynchronous contact (button, switch) into a signal that is
+synchronous to ~clk~ and changes only after the contact has rested.
+
+- Block :: ~src/debounce.vhd~
+- Version :: 1.0.0
+- Requirements :: [[file:debounce_srs.org::#requirements][debounce requirements]]
+- Design :: [[file:debounce_hdd.org::#overview][debounce design description]]
+- Enforced by :: ~tb/tb_debounce.vhd~; the ~p_tw_*~ processes are tripwire
+  monitors, one per clause below
+
+* Physical boundary
+:PROPERTIES:
+:CUSTOM_ID: boundary
+:END:
+
+** Ports
+:PROPERTIES:
+:CUSTOM_ID: ports
+:END:
+
+# Read from the entity: C-c C-c on the next line after the VHDL changed.
+#+BEGIN: vhdl-ports :file "../src/debounce.vhd"
+| Port | Dir | Width | Description                           |
+|------+-----+-------+---------------------------------------|
+| clk  | in  |     1 |                                       |
+| rst  | in  |     1 | synchronous, active high              |
+| din  | in  |     1 | raw and asynchronous (button, switch) |
+| dout | out |     1 | debounced, synchronous to clk         |
+#+END:
+
+** Generics and derived numbers
+:PROPERTIES:
+:CUSTOM_ID: numbers
+:END:
+
+Everything below is counted in clocks and follows from one constant of the
+design:
+
+#+BEGIN_EXAMPLE
+C_LIMIT = G_CLK_HZ / 1000 * G_DEBOUNCE_MS     (integer arithmetic, divided first)
+#+END_EXAMPLE
+
+| Name     | Value       | Meaning                                              |
+|----------+-------------+------------------------------------------------------|
+| SAMPLES  | C_LIMIT + 1 | equal samples of ~din~ needed before ~dout~ changes  |
+| LATENCY  | C_LIMIT + 3 | clock edges from a change of ~din~ to that of ~dout~ |
+| INTERVAL | C_LIMIT + 1 | least number of clocks between two changes of ~dout~ |
+
+With the defaults (100 MHz, 10 ms) C_LIMIT is 1 000 000, so the contact
+must rest for 1 000 001 clocks: 10 ns longer than the 10 ms asked for.
+
+Two limits of the arithmetic:
+
+- ~G_CLK_HZ~ below 1000 makes C_LIMIT zero, which the design rejects when
+  it is elaborated (range error on a ~positive~ constant).
+- ~G_CLK_HZ~ is cut to whole kHz, so 32 768 Hz counts as 32 000 Hz and the
+  time comes out 2.3 % short.
+
+** Clocks and resets
+:PROPERTIES:
+:CUSTOM_ID: clocks
+:END:
+
+| Clock | Frequency  | Source       | Drives          |
+|-------+------------+--------------+-----------------|
+| clk   | ~G_CLK_HZ~ | system clock | the whole block |
+
+| Reset | Active | Synchronous to | Minimum length | Resets                 |
+|-------+--------+----------------+----------------+------------------------|
+| rst   | high   | clk            | 1 clock        | ~dout~ and the counter |
+
+~rst~ does not reset the two synchronizer flip-flops; they keep following
+~din~.  See [[#reset][Reset]] for what that means at the port.
+
+** Clock domain crossings
+:PROPERTIES:
+:CUSTOM_ID: cdc
+:END:
+
+| From clock     | To clock | Signal(s) | Structure                        | Constraint                       |
+|----------------+----------+-----------+----------------------------------+----------------------------------|
+| none (the pin) | clk      | ~din~     | two flip-flops inside this block | false path or input delay on din |
+
+The crossing belongs to this block: do not put another synchronizer in
+front of it.  The constraint belongs to the project and is not part of this
+example.
+
+* Register map
+:PROPERTIES:
+:CUSTOM_ID: registers
+:END:
+
+None.  The block has no bus and no registers that software can reach.
+
+* Timing contracts
+:PROPERTIES:
+:CUSTOM_ID: timing
+:END:
+
+~din~ is sampled at every rising edge of ~clk~.  A sample is the level of
+~din~ at that edge; what it does between two edges is not seen.
+
+** Filter
+:PROPERTIES:
+:CUSTOM_ID: filter
+:END:
+
+~dout~ takes a level only after ~din~ showed that level at SAMPLES
+consecutive clock edges.  One sample of the other level starts the count
+again.
+
+In time, for a pulse on ~din~ of width W and a clock period T:
+
+| W                      | Result                                |
+|------------------------+---------------------------------------|
+| W <= C_LIMIT x T       | never passed on                       |
+| W >= (C_LIMIT + 1) x T | always passed on                      |
+| between the two        | depends on where the clock edges fall |
+
+An input that never rests for SAMPLES clocks is never passed on, however
+long that goes on.  That is the purpose of the block, not a fault.
+
+- Enforced by :: ~p_tw_filter~
+
+** Latency
+:PROPERTIES:
+:CUSTOM_ID: latency
+:END:
+
+When ~din~ changes and then rests, ~dout~ follows at the LATENCY-th rising
+edge after the change: the first two edges move the level through the
+synchronizer, the next SAMPLES count it.  In time that is more than
+(C_LIMIT + 2) and at most (C_LIMIT + 3) clock periods.
+
+- Enforced by :: ~p_tw_latency~
+
+** Minimum interval
+:PROPERTIES:
+:CUSTOM_ID: min-interval
+:END:
+
+Two changes of ~dout~ are at least INTERVAL clocks apart, so a counter or
+an edge detector behind it never sees a pulse shorter than that.  A change
+of ~din~ taken back as soon as it was passed on is ignored like any other
+short pulse.
+
+- Enforced by :: ~p_tw_min_interval~
+
+** Reset
+:PROPERTIES:
+:CUSTOM_ID: reset
+:END:
+
+~dout~ is low from the clock after ~rst~ is sampled high and stays low
+while ~rst~ is high, whatever ~din~ does.  The count starts again when
+~rst~ is released.
+
+A contact that is closed during reset therefore reads as open first:
+~dout~ rises SAMPLES clocks after ~rst~ is released.  Logic that acts on a
+rising ~dout~ sees an edge that the contact did not make.
+
+- Enforced by :: ~p_tw_reset~
+
+** What the neighbours may do
+:PROPERTIES:
+:CUSTOM_ID: illegal-sequences
+:END:
+
+There is no illegal input: ~din~ may do anything at any time.  The table
+lists the behaviour that looks like a fault from outside and is not.
+
+| The input does                          | The block does                         | Checked by |
+|-----------------------------------------+----------------------------------------+------------|
+| Bounces, each rest shorter than SAMPLES | Nothing, then one change when it rests | [[file:debounce_vplan.org::#TC-10][TC-10]]      |
+| Glitches at any phase of the clock      | Nothing                                | [[file:debounce_vplan.org::#TC-11][TC-11]]      |
+| Toggles without ever resting            | Nothing, for as long as it lasts       | [[file:debounce_vplan.org::#TC-12][TC-12]]      |
+| Changes back as ~dout~ changes          | Keeps the new level                    | [[file:debounce_vplan.org::#TC-14][TC-14]]      |
+| ~rst~ while a count is running          | Starts the count again                 | [[file:debounce_vplan.org::#TC-13][TC-13]]      |
+
+* Error and recovery
+:PROPERTIES:
+:CUSTOM_ID: errors
+:END:
+
+The block reports no error and cannot lock up: every state is left by
+~rst~ or by a resting input.  It keeps no state that a software restart
+could leave stale.
+
+A sample taken while ~din~ is changing can settle either way.  The two
+synchronizer flip-flops give it a clock to settle; the filter then treats
+it as one more bounce.  Metastability is not simulated and the settling
+time was not analysed for a device.
+
+* Change control
+:PROPERTIES:
+:CUSTOM_ID: change-control
+:END:
+
+A change to a number in [[#numbers][Generics and derived numbers]] changes the
+constants at the top of ~tb/tb_debounce.vhd~ in the same commit; the
+monitors take their limits from those constants.
+
+| Consumer            | Uses                             | Contact |
+|---------------------+----------------------------------+---------|
+| Logic behind ~dout~ | latency, minimum interval, reset |         |
+| Top level           | ~din~ pin and its constraint     |         |
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

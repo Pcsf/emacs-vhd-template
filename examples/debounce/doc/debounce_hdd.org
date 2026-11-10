@@ -1,0 +1,165 @@
+#+TITLE: Design description: debounce
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+
+# Worked example on a real block: the debounce template of emacs-vhd-template,
+# as rendered into ../src/debounce.vhd.  Every number here is checked by
+# ../tb/tb_debounce.vhd; run test/run-example.sh debounce from the repository
+# root.
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+How ~debounce~ is built.  What it promises at its ports is in the
+[[file:debounce_icd.org::#scope][ICD]] and is not repeated here.
+
+- Version :: 1.0.0
+- Requirements :: [[file:debounce_srs.org::#requirements][debounce requirements]]
+- Interface :: [[file:debounce_icd.org::#scope][debounce ICD]]
+
+* Overview
+:PROPERTIES:
+:CUSTOM_ID: overview
+:END:
+
+Two flip-flops bring ~din~ into the clock domain.  A counter measures for
+how long the synchronized level has differed from the output; when it
+reaches C_LIMIT the output takes the new level.
+
+#+BEGIN_EXAMPLE
+          +---------+   +---------+      +-----------------------+
+  din --->| sync(0) |-->| sync(1) |--+-->| /= stable ? count     |
+          +---------+   +---------+  |   |  = stable ? clear     |
+                                     |   +-----------+-----------+
+                                     |               | cnt = C_LIMIT
+                                     |          +----v----+
+                                     +--------->| stable  |---> dout
+                                                +---------+
+#+END_EXAMPLE
+
+| File                 | Unit          | Purpose                          |
+|----------------------+---------------+----------------------------------|
+| ~src/debounce.vhd~   | ~debounce~    | The block, one clocked process   |
+| ~tb/tb_debounce.vhd~ | ~tb_debounce~ | Test cases and tripwire monitors |
+
+* Clocks and resets
+:PROPERTIES:
+:CUSTOM_ID: clocks
+:END:
+
+One clock.  ~rst~ is synchronous and active high, and is the last
+statement of the process, so it wins over the count.  It resets ~stable~
+and ~cnt~ and leaves the synchronizer alone.
+
+| Clock | Frequency  | Source       | Used by         | Constraint                |
+|-------+------------+--------------+-----------------+---------------------------|
+| clk   | ~G_CLK_HZ~ | system clock | the whole block | ~create_clock~ at the top |
+
+* Clock domain crossings
+:PROPERTIES:
+:CUSTOM_ID: cdc
+:END:
+
+| From | To  | Signal(s) | Structure              | Constraint          | Verified by            |
+|------+-----+-----------+------------------------+---------------------+------------------------|
+| pin  | clk | ~din~     | ~sync~, two flip-flops | false path on ~din~ | inspection; no CDC run |
+
+~sync~ carries ~async_reg~ (Xilinx) and ~SYNCHRONIZER_IDENTIFICATION~
+(Intel) and has no reset, so nothing sits between its two stages.
+
+* Block design
+:PROPERTIES:
+:CUSTOM_ID: design
+:END:
+
+** Structure
+:PROPERTIES:
+:CUSTOM_ID: structure
+:END:
+
+The block is one clocked process with three signals.  It is not in the
+two-process style: with a synchronizer chain and one counter there is no
+next-state logic worth separating.
+
+| Signal   |              Width | Reset | Purpose                                   |
+|----------+--------------------+-------+-------------------------------------------|
+| ~sync~   |                  2 |  none | Synchronizer; ~sync(1)~ is the level used |
+| ~stable~ |                  1 |     0 | The debounced level, drives ~dout~        |
+| ~cnt~    | range 0 to C_LIMIT |     0 | Clocks for which ~sync(1)~ differed       |
+
+** Control
+:PROPERTIES:
+:CUSTOM_ID: fsm
+:END:
+
+There is no state machine.  Each clock takes one of three branches:
+
+| Condition                                 | Action                            |
+|-------------------------------------------+-----------------------------------|
+| ~sync(1)~ = ~stable~                      | ~cnt~ := 0                        |
+| ~sync(1)~ /= ~stable~ and ~cnt~ = C_LIMIT | ~stable~ := ~sync(1)~, ~cnt~ := 0 |
+| ~sync(1)~ /= ~stable~ otherwise           | ~cnt~ := ~cnt~ + 1                |
+
+The count goes from 0 to C_LIMIT before the level is taken, which is why a
+change needs C_LIMIT + 1 samples and not C_LIMIT.
+
+** Datapath
+:PROPERTIES:
+:CUSTOM_ID: datapath
+:END:
+
+None beyond the counter: ceil(log2(C_LIMIT + 1)) bits, 20 with the
+defaults.
+
+** Register interface
+:PROPERTIES:
+:CUSTOM_ID: register-interface
+:END:
+
+None.
+
+* Design decisions
+:PROPERTIES:
+:CUSTOM_ID: decisions
+:END:
+
+| Decision                                                 | Consequence at the port                          |
+|----------------------------------------------------------+--------------------------------------------------|
+| The synchronizer is inside the block and not reset       | A closed contact reads open after reset (ICD)    |
+| The count is cleared by one sample of the old level      | An input that never rests is never passed on     |
+| C_LIMIT is computed as ~G_CLK_HZ / 1000 * G_DEBOUNCE_MS~ | No overflow of ~natural~; clock cut to whole kHz |
+
+* Resource and timing budget
+:PROPERTIES:
+:CUSTOM_ID: budget
+:END:
+
+No synthesis was run for this example.  The estimate is counted from the
+code.
+
+| Item       | Budget |             Estimate | Actual (release build) |
+|------------+--------+----------------------+------------------------|
+| LUTs       |        |                      | not measured           |
+| Flip-flops |        | 23 with the defaults | not measured           |
+| Block RAM  |        |                    0 | not measured           |
+| DSP        |        |                    0 | not measured           |
+| Fmax       |        |                      | not measured           |
+
+* Observability
+:PROPERTIES:
+:CUSTOM_ID: observability
+:END:
+
+~cnt~ and ~stable~ are the two signals to look at; in a waveform the count
+ramps while the input differs and falls to 0 at every bounce.
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

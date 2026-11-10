@@ -1,0 +1,275 @@
+#+TITLE: Design description: i2c_master
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+How ~i2c_master~ is built and why, well enough that someone else can change
+it without breaking the ICD.  The boundary (ports, commands, timing seen
+from outside) is in the ICD and is not repeated here.
+
+- Version :: 1.0.0
+- Requirements :: [[file:i2c_master_srs.org::#requirements][i2c_master requirements]]
+- Interface :: [[file:i2c_master_icd.org::#scope][i2c_master ICD]]
+
+* Overview
+:PROPERTIES:
+:CUSTOM_ID: overview
+:END:
+
+A command comes in on a valid/ready port and says which of START, one byte
+and STOP to put on the bus.  A state machine walks through them in quarter
+SCL periods, counted by one timer, and drives the two open-drain enables.
+When the command is done, one clock of ~rsp_valid~ returns the byte read
+and the acknowledge of the byte written.  The bus lines come back in
+through two synchronizers.
+
+#+BEGIN_EXAMPLE
+                 +------------------------------------------------+
+  cmd_valid ---->|            comb                  regs          |
+  cmd_* -------->|  +--------------------+      +---------+       |----> scl_oe
+  cmd_ready <----|  | quarter timer      |  v   |         |  r    |----> sda_oe
+                 |  | state, step, bit   |----->|    r    |---+   |
+  rsp_valid <----|  | shift in / out     |      |         |   |   |
+  rsp_data  <----|  +--------------------+      +---------+   |   |
+  rsp_nack  <----|      ^      ^     ^                        |   |
+  busy      <----|      |      |     +------------------------+   |
+                 |    scl_s  sda_s                                |
+                 |  +----------+  +----------+                    |
+                 |  | sync_2ff |  | sync_2ff |                    |
+                 |  +----------+  +----------+                    |
+                 +-------^-------------^--------------------------+
+                         |             |                 clk, rst
+                       scl_i         sda_i
+#+END_EXAMPLE
+
+| File                   | Unit            | Purpose                                 |
+|------------------------+-----------------+-----------------------------------------|
+| ~src/i2c_master.vhd~   | ~i2c_master~    | Two-process block: ~comb~ and ~regs~    |
+| ~src/sync_2ff.vhd~     | ~sync_2ff~      | Synchronizer, one instance per bus line |
+| ~tb/tb_i2c_master.vhd~ | ~tb_i2c_master~ | Test cases and ~p_tw_*~ monitors        |
+| ~tb/mutants.txt~       |                 | Mutants of the design, one per line     |
+
+The block has no package: its ports are plain ~std_logic~ signals.
+
+* Clocks and resets
+:PROPERTIES:
+:CUSTOM_ID: clocks
+:END:
+
+| Clock | Frequency  | Source    | Used by         | Constraint                |
+|-------+------------+-----------+-----------------+---------------------------|
+| clk   | ~G_CLK_HZ~ | top level | the whole block | ~create_clock~ at the top |
+
+- ~rst~ is synchronous and active high.  It is the last statement of
+  ~comb~ and overrides the control fields only: ~state~, ~scl_oe~,
+  ~sda_oe~, ~bus_active~ and ~rsp_valid~.  The other fields keep their
+  value; none of them matters before the next command loads it.
+- ~REG_RESET~ is the initial value of the whole record, so simulation and
+  the bitstream start in the same state.
+- Nothing is reset asynchronously, and the synchronizers have no reset.
+- There is no second source of reset: no soft reset, no timeout.
+
+* Clock domain crossings
+:PROPERTIES:
+:CUSTOM_ID: cdc
+:END:
+
+| From    | To  | Signal(s) | Structure                         | Constraint         | Verified by |
+|---------+-----+-----------+-----------------------------------+--------------------+-------------|
+| the bus | clk | ~scl_i~   | ~u_sync_scl~: ~sync_2ff~, 2 flops | path to first flop | not run     |
+| the bus | clk | ~sda_i~   | ~u_sync_sda~: ~sync_2ff~, 2 flops | path to first flop | not run     |
+
+- Both chains start at 1 (~G_INIT~), the idle level of the bus, so the
+  block does not see a low line in its first two clocks.
+- ~sync_2ff~ carries the attributes that make Xilinx and Intel tools treat
+  the flops as a synchronizer.  The false path or maximum delay to the
+  first flop belongs to the constraints of the project.
+- No CDC report was produced for this example.
+
+* Block design
+:PROPERTIES:
+:CUSTOM_ID: design
+:END:
+
+** Structure
+:PROPERTIES:
+:CUSTOM_ID: structure
+:END:
+
+Two-process style: ~comb~ computes the next state ~v~ from the registers
+~r~ and the inputs, ~regs~ clocks ~rin~ into ~r~.  Every output is a field
+of ~r~ or decoded from ~r.state~ alone, so no input reaches an output
+within the same clock.
+
+| ~reg_type~ field |      Width |  Start | By rst | Purpose                                    |
+|------------------+------------+--------+--------+--------------------------------------------|
+| ~state~          |       enum | S_IDLE | yes    | State of the [[#fsm][control FSM]]                   |
+| ~step~           |        0-4 |      0 | no     | Position inside a state, one per quarter   |
+| ~bit_idx~        |        0-8 |      0 | no     | Bit of the byte: 0-7 data, 8 acknowledge   |
+| ~timer~          | 0 to C_Q-1 |      0 | no     | [[#timer][Quarter timer]]                              |
+| ~bus_active~     |          1 |      0 | yes    | A transaction is open                      |
+| ~scl_oe~         |          1 |      0 | yes    | Port ~scl_oe~: 1 pulls SCL low             |
+| ~sda_oe~         |          1 |      0 | yes    | Port ~sda_oe~: 1 pulls SDA low             |
+| ~tx_sh~          |          8 |      0 | no     | ~cmd_data~ of the command                  |
+| ~rx_sh~          |          8 |      0 | no     | Bits read, shifted in from the right       |
+| ~do_start~       |          1 |      0 | no     | ~cmd_start~ of the command (not read back) |
+| ~do_stop~        |          1 |      0 | no     | ~cmd_stop~ of the command                  |
+| ~do_read~        |          1 |      0 | no     | ~cmd_read~ of the command                  |
+| ~do_write~       |          1 |      0 | no     | ~cmd_write~ and not ~cmd_read~             |
+| ~nack~           |          1 |      0 | no     | ~cmd_nack~ of the command                  |
+| ~ack_err~        |          1 |      0 | no     | The written byte was not acknowledged      |
+| ~rsp_valid~      |          1 |      0 | yes    | Port ~rsp_valid~                           |
+| ~rsp_data~       |          8 |      0 | no     | Port ~rsp_data~                            |
+| ~rsp_nack~       |          1 |      0 | no     | Port ~rsp_nack~                            |
+
+~cmd_ready~ is ~r.state = S_IDLE~ and ~busy~ is its opposite.
+
+** Control FSM
+:PROPERTIES:
+:CUSTOM_ID: fsm
+:END:
+
+| State   | Meaning               | Leaves on                                | To      |
+|---------+-----------------------+------------------------------------------+---------|
+| S_IDLE  | Waits for a command   | ~cmd_valid~ with ~cmd_start~             | S_START |
+|         |                       | ~cmd_valid~ with read or write, no start | S_BYTE  |
+|         |                       | ~cmd_valid~ with stop only, ~bus_active~ | S_STOP  |
+|         |                       | ~cmd_valid~ with anything else           | S_DONE  |
+| S_START | START, repeated START | step 4, command has a byte               | S_BYTE  |
+|         |                       | step 4, command has no byte              | S_DONE  |
+| S_BYTE  | Eight bits and ACK    | step 4, ~do_stop~                        | S_STOP  |
+|         |                       | step 4, no ~do_stop~                     | S_DONE  |
+| S_STOP  | STOP                  | last step                                | S_DONE  |
+| S_DONE  | One clock             | always                                   | S_IDLE  |
+
+Inside a state ~step~ moves on when a quarter period has passed.  What
+each step does when it is left:
+
+| State   | Step | Action                                                             |
+|---------+------+--------------------------------------------------------------------|
+| S_START |    0 | Release SDA (SCL is low).  Entry for a repeated START              |
+|         |    1 | Release SCL                                                        |
+|         |    2 | Pull SDA low: the START                                            |
+|         |    3 | Pull SCL low.  Entry on an idle bus, with SDA pulled low on entry  |
+|         |    4 | Set ~bus_active~, go on                                            |
+| S_BYTE  |    0 | Put the bit on SDA: data or ACK for a write or read, see [[#datapath][datapath]]  |
+|         |    1 | Release SCL                                                        |
+|         |    2 | Nothing: first half of SCL high                                    |
+|         |    3 | Pull SCL low and take SDA.  Next bit at step 0, after bit 8 step 4 |
+|         |    4 | One quarter with SCL low, then S_STOP (SDA pulled low) or S_DONE   |
+| S_STOP  |    1 | Release SCL.  SDA was pulled low on entry                          |
+|         |    2 | Release SDA: the STOP                                              |
+|         |    3 | Clear ~bus_active~, go on                                          |
+
+- S_IDLE loads the command fields and the timer in the clock that takes
+  the command, and makes the first bus change of the command in the same
+  clock: SDA low for a START on an idle bus, SCL low for a byte.
+- S_DONE sets ~rsp_valid~ and copies ~rx_sh~ to ~rsp_data~ and ~ack_err~ to
+  ~rsp_nack~.  ~rx_sh~ is not cleared between commands, which is why a
+  command without a read returns the byte read last.
+- A command with start and stop but no byte leaves S_START for S_DONE:
+  ~do_stop~ is looked at only at the end of S_BYTE.
+- A byte without START on an idle bus goes through S_BYTE without
+  ~bus_active~ being set; a later stop-only command then takes the
+  "anything else" row.  Both are in the [[file:i2c_master_icd.org::#illegal-sequences][illegal sequences of the ICD]].
+- ~state~ is an enumeration and the ~case~ has no ~others~ branch.  What
+  an illegal encoding does depends on how the tool encodes the state; it
+  is not handled and was not analysed.
+
+** Quarter timer and clock stretching
+:PROPERTIES:
+:CUSTOM_ID: timer
+:END:
+
+C_Q = ~G_CLK_HZ~ / (4 * ~G_SCL_HZ~) clocks is a quarter of the SCL period.
+~timer~ is loaded with C_Q - 1 and counts down; when it is 0 the step is
+left and the timer loaded again, so a step lasts C_Q clocks.  An assertion
+stops elaboration when C_Q would be below 2.
+
+Clock stretching is one condition in front of the count: while the block
+has released SCL (~r.scl_oe~ = 0) and the synchronized line ~scl_s~ still
+reads 0, the timer is loaded again instead of counted down.  The quarter
+after a release therefore starts when SCL is seen high.  The line is seen
+two clocks late through the synchronizer, so every step that begins with a
+release lasts C_Q + 2 clocks on a bus that rises at once: this is the "+ 2"
+in the numbers of the [[file:i2c_master_icd.org::#bus-timing][bus timing of the ICD]].  There is no counter that
+ends a stretch.
+
+** Datapath
+:PROPERTIES:
+:CUSTOM_ID: datapath
+:END:
+
+- Write: ~tx_sh~ is not shifted.  Step 0 of bit n drives
+  ~sda_oe~ = not ~tx_sh(7 - n)~, so a 0 pulls the line and a 1 releases it.
+  For bit 8 SDA is released and step 3 stores ~sda_s~ in ~ack_err~.
+- Read: SDA is released for bits 0 to 7 and step 3 shifts ~sda_s~ into
+  ~rx_sh~ from the right.  For bit 8 step 0 drives ~sda_oe~ = not ~nack~.
+- SDA is taken at the end of the SCL high phase, in the clock that pulls
+  SCL low, from the synchronizer: the value is the line two clocks before.
+- With read and write both set, ~do_write~ is 0 and the command is a read.
+- No arithmetic, no memory: nothing for a DSP block or a block RAM.
+
+** Command and response
+:PROPERTIES:
+:CUSTOM_ID: command-interface
+:END:
+
+There is no register interface.  The command fields are copied into the
+~do_*~, ~nack~ and ~tx_sh~ fields in the clock in which ~cmd_valid~ is 1
+and the state is S_IDLE, and are not looked at again.  The copy also
+happens while ~rst~ is 1, but ~rst~ then keeps the state at S_IDLE, so the
+command has no effect: this is why a command offered in reset is lost
+([[file:i2c_master_icd.org::#cmd-in-reset][ICD, cmd-in-reset]]).
+
+* Design decisions
+:PROPERTIES:
+:CUSTOM_ID: decisions
+:END:
+
+No decision record was written for this block.
+
+| ADR    | Decision | Status |
+|--------+----------+--------|
+| (none) |          |        |
+
+* Resource and timing budget
+:PROPERTIES:
+:CUSTOM_ID: budget
+:END:
+
+Not measured: no synthesis was run for this example, and no budget is
+stated ([[file:i2c_master_srs.org::#open-points][open point OP-5]]).
+
+| Item       | Budget | Estimate | Actual (release build) |
+|------------+--------+----------+------------------------|
+| LUTs       |        |          |                        |
+| Flip-flops |        |          |                        |
+| Block RAM  |        |          |                        |
+| DSP        |        |          |                        |
+| Fmax       |        |          |                        |
+
+* Observability
+:PROPERTIES:
+:CUSTOM_ID: observability
+:END:
+
+- For a logic analyser in the fabric: ~r.state~, ~r.step~, ~r.bit_idx~,
+  ~scl_s~ and ~sda_s~ show where a transfer stands.  Nothing is marked for
+  debug in the source.
+- In simulation the log of ~tb_i2c_master~ has one line per test case and
+  one per alert, tagged with the test case and the ICD clause.  No waveform
+  is written unless GHDL is run with ~--wave~.
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

@@ -516,7 +516,9 @@
 
 (ert-deftest vhdl-tpl-test-document-links-resolve ()
   (let ((dir (vhdl-tpl-test--render-docs (make-temp-file "vhdl-tpl" t))))
-    (dolist (d (list dir vhdl-tpl-test--examples))
+    (dolist (d (list dir vhdl-tpl-test--examples
+                     (expand-file-name "debounce/doc/" vhdl-tpl-test--examples)
+                     (expand-file-name "i2c_master/doc/" vhdl-tpl-test--examples)))
       (let ((result (vhdl-tpl-test--broken-links d)))
         (should (> (car result) 10))
         (should (equal (cdr result) nil)))
@@ -572,6 +574,45 @@
         (while (not (eobp))
           (should (<= (- (line-end-position) (line-beginning-position)) 100))
           (forward-line 1))))))
+
+(defun vhdl-tpl-test--design-lines (text)
+  "The lines of TEXT without the author and date of the file header."
+  (cl-remove-if (lambda (l) (string-match-p "\\`-- \\(?:Author\\|Created\\) " l))
+                (split-string text "\n")))
+
+(ert-deftest vhdl-tpl-test-example-sources-are-the-templates ()
+  "The VHDL of a worked example is its template, rendered with the defaults."
+  (vhdl-tpl-test--with-defaults
+   (dolist (case '(("debounce" "debounce") ("i2c_master" "i2c_master" "sync_2ff")))
+     (dolist (name (cdr case))
+       (let ((file (expand-file-name (format "%s/src/%s.vhd" (car case) name)
+                                     vhdl-tpl-test--examples)))
+         (should (equal (vhdl-tpl-test--design-lines (vhdl-tpl-test--slurp file))
+                        (vhdl-tpl-test--design-lines
+                         (replace-regexp-in-string
+                          "\uE000" ""
+                          (vhdl-tpl-render
+                           (vhdl-tpl--read-file (vhdl-tpl--file 'templates name))
+                           nil file))))))))))
+
+(ert-deftest vhdl-tpl-test-example-documents-match-their-testbench ()
+  "Every monitor and test case a plan names is in the testbench, and back."
+  (dolist (block '("debounce" "i2c_master"))
+    (let* ((dir (expand-file-name (concat block "/") vhdl-tpl-test--examples))
+           (tb (vhdl-tpl-test--slurp (expand-file-name (format "tb/tb_%s.vhd" block) dir)))
+           (plan (vhdl-tpl-test--slurp
+                  (expand-file-name (format "doc/%s_vplan.org" block) dir)))
+           (found (lambda (regexp text)
+                    (let ((pos 0) all)
+                      (while (string-match regexp text pos)
+                        (setq pos (match-end 0))
+                        (cl-pushnew (match-string 1 text) all :test #'equal))
+                      (sort all #'string<)))))
+      (should (equal (funcall found "^ *\\(p_tw_[a-z0-9_]+\\) *: *process" tb)
+                     (funcall found "~\\(p_tw_[a-z0-9_]+\\)~" plan)))
+      (should (funcall found "^ *\\(p_tw_[a-z0-9_]+\\) *: *process" tb))
+      (should (equal (funcall found "tc_start(\"\\(TC-[0-9]+\\)\"" tb)
+                     (funcall found "^\\*\\* \\(TC-[0-9]+\\) " plan))))))
 
 ;;;; The document set of a block
 

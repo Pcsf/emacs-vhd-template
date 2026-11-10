@@ -107,5 +107,7 @@ requirement in view while doing verification work.
   wrong within a week. Generate what can be generated (port table,
   matrix) and delete sections that do not apply.
 
-The filled-in set in [`examples/`](../examples/) shows all of this for one
-small block.
+The [`examples/`](../examples/) show all of this three times: for an
+imaginary block with registers, for a small real block (`debounce`) and for
+a protocol block (`i2c_master`). The two real ones run: their testbenches
+carry the monitors, and each monitor is shown to fire.

@@ -1,0 +1,60 @@
+#+TITLE: Traceability: debounce
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+
+# Worked example on a real block: the debounce template of emacs-vhd-template,
+# as rendered into ../src/debounce.vhd.  Every number here is checked by
+# ../tb/tb_debounce.vhd; run test/run-example.sh debounce from the repository
+# root.
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+One row per requirement of ~debounce~: where it is implemented, which ICD
+clause exposes it, which tests and which monitor verify it, and the result.
+
+- Source :: [[file:debounce_srs.org::#requirements][debounce requirements]]
+- Tests :: [[file:debounce_vplan.org::#test-cases][debounce verification plan]]
+
+* Matrix
+:PROPERTIES:
+:CUSTOM_ID: matrix
+:END:
+
+# Generated: do not edit the table.  Change the properties of the
+# requirement in the SRS, then press C-c C-c on the next line.
+#+BEGIN: columnview :id "file:debounce_srs.org" :skip-empty-rows t
+| Requirement                              | METHOD | DESIGN   | ICD              | TEST                              | MONITOR           | RESULT |
+|------------------------------------------+--------+----------+------------------+-----------------------------------+-------------------+--------|
+| REQ-001 A change needs a resting input   | T      | [[file:debounce_hdd.org::#structure][counter]]  | [[file:debounce_icd.org::#filter][filter]]           | [[file:debounce_vplan.org::#TC-04][TC-04]], [[file:debounce_vplan.org::#TC-10][TC-10]], [[file:debounce_vplan.org::#TC-11][TC-11]], [[file:debounce_vplan.org::#TC-12][TC-12]], [[file:debounce_vplan.org::#TC-14][TC-14]] | p_tw_filter       | PASS   |
+| REQ-002 A resting input is passed on     | T      | [[file:debounce_hdd.org::#structure][counter]]  | [[file:debounce_icd.org::#latency][latency]]          | [[file:debounce_vplan.org::#TC-02][TC-02]], [[file:debounce_vplan.org::#TC-03][TC-03]], [[file:debounce_vplan.org::#TC-05][TC-05]], [[file:debounce_vplan.org::#TC-10][TC-10]]        | p_tw_latency      | PASS   |
+| REQ-003 Changes of the output are spaced | T      | [[file:debounce_hdd.org::#structure][counter]]  | [[file:debounce_icd.org::#min-interval][minimum interval]] | [[file:debounce_vplan.org::#TC-14][TC-14]]                             | p_tw_min_interval | PASS   |
+| REQ-020 Synchronous output               | I      | [[file:debounce_hdd.org::#structure][stable]]   | [[file:debounce_icd.org::#ports][ports]]            | code inspection                   |                   | PASS   |
+| REQ-021 Asynchronous input               | I, A   | [[file:debounce_hdd.org::#cdc][crossing]] | [[file:debounce_icd.org::#cdc][crossing]]         | code inspection; CDC report       |                   | OPEN   |
+| REQ-010 Reset state                      | T      | [[file:debounce_hdd.org::#clocks][reset]]    | [[file:debounce_icd.org::#reset][reset]]            | [[file:debounce_vplan.org::#TC-01][TC-01]], [[file:debounce_vplan.org::#TC-13][TC-13]]                      | p_tw_reset        | PASS   |
+| REQ-030 Clock frequency                  | A      | [[file:debounce_hdd.org::#budget][budget]]   |                  | timing report                     |                   | OPEN   |
+#+END:
+
+The two OPEN rows are the analyses that were not run for this example
+(CDC report, timing report).
+
+* Reverse trace
+:PROPERTIES:
+:CUSTOM_ID: reverse-trace
+:END:
+
+| Design element or test             | Why it exists                               | Action             |
+|------------------------------------+---------------------------------------------+--------------------|
+| TC-11, nine clock phases           | REQ-001 must hold for an asynchronous input | covered by REQ-001 |
+| The count is one longer than asked | counts 0 to C_LIMIT inclusive               | stated in the ICD  |
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |

@@ -1,0 +1,6 @@
+# Compile order of the example, paths from the repository root.
+build/rendered/tb_util_pkg.vhd
+build/rendered/bfm_i2c_pkg.vhd
+examples/i2c_master/src/sync_2ff.vhd
+examples/i2c_master/src/i2c_master.vhd
+examples/i2c_master/tb/tb_i2c_master.vhd

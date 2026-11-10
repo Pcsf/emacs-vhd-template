@@ -323,9 +323,10 @@ What the templates give you:
 
 - **A skeleton, not an example.** Headings and empty tables, with the
   guidance for each section as Org comment lines (`# ...`), which are not
-  exported. Nothing has to be cleaned out before writing. A filled-in set
-  for an imaginary block is in [`examples/`](examples/), to read next to
-  the skeleton.
+  exported. Nothing has to be cleaned out before writing. Filled-in sets
+  are in [`examples/`](examples/): one for an imaginary block with a
+  register map, and two for real templates (`debounce`, `i2c_master`) with
+  the testbench, tripwire monitors and mutants that enforce every clause.
 - **The port table follows the VHDL.** In the ICD it is a dynamic block read
   from `src/<name>.vhd`: name, direction, width and the comment of each
   port. A port of a record type declared in `src/<name>_pkg.vhd` is listed
@@ -578,7 +579,9 @@ make sim      # render every template with its defaults, then GHDL
               # analyse, elaborate and simulate them (needs ghdl)
 make tdd      # C-c t b bundle on the mk framework: RED on the skeleton,
               # GREEN after one line of comb (clones mk, needs git)
-make check    # all three
+make examples # the worked examples: each testbench passes and every
+              # mutant of the design in tb/mutants.txt is caught
+make check    # all four
 ```
 
 `make sim` runs nine testbenches, plus four runs that must fail:
@@ -655,7 +658,8 @@ vhdl-tpl.el     the whole engine (one file)
 templates/      whole-file templates (VHDL, constraints, scripts, Org documents)
 snippets/       fragments
 partials/       shared pieces (file headers, Org keywords)
-examples/       the documents filled in for an imaginary block
+examples/       the documents filled in: an imaginary block, and two real
+                templates with testbench, monitors and mutants
 doc/            background on the method behind the document templates
 test/           ERT tests, render script, functional testbenches
 Makefile        make check

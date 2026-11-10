@@ -1,0 +1,156 @@
+#+TITLE: Requirements: debounce
+#+AUTHOR: Pcsf
+#+DATE: 2026-11-10
+#+LANGUAGE: en
+#+OPTIONS: toc:2 num:t ^:nil
+#+STARTUP: showall
+#+COLUMNS: %ITEM(Requirement) %METHOD %DESIGN %ICD %TEST %MONITOR %RESULT
+
+# Worked example on a real block: the debounce template of emacs-vhd-template,
+# as rendered into ../src/debounce.vhd.  Every number here is checked by
+# ../tb/tb_debounce.vhd; run test/run-example.sh debounce from the repository
+# root.
+
+* Scope
+:PROPERTIES:
+:CUSTOM_ID: scope
+:END:
+
+What ~debounce~ has to do, seen from its ports, and how each statement is
+shown to hold.
+
+- Parent :: a mechanical contact has to be read by synchronous logic
+- Interface :: [[file:debounce_icd.org::#scope][debounce ICD]]
+- Design :: [[file:debounce_hdd.org::#overview][debounce design description]]
+- Verification :: [[file:debounce_vplan.org::#test-cases][debounce verification plan]]
+- Traceability :: [[file:debounce_rtm.org::#matrix][debounce traceability matrix]]
+
+SAMPLES, LATENCY and INTERVAL are the numbers of the ICD,
+[[file:debounce_icd.org::#numbers][Generics and derived numbers]].
+
+* Requirements
+:PROPERTIES:
+:CUSTOM_ID: requirements
+:END:
+
+** Functional
+
+*** REQ-001 A change needs a resting input
+:PROPERTIES:
+:CUSTOM_ID: REQ-001
+:METHOD:   T
+:TEST:     [[file:debounce_vplan.org::#TC-04][TC-04]], [[file:debounce_vplan.org::#TC-10][TC-10]], [[file:debounce_vplan.org::#TC-11][TC-11]], [[file:debounce_vplan.org::#TC-12][TC-12]], [[file:debounce_vplan.org::#TC-14][TC-14]]
+:DESIGN:   [[file:debounce_hdd.org::#structure][counter]]
+:ICD:      [[file:debounce_icd.org::#filter][filter]]
+:MONITOR:  p_tw_filter
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: The block shall change ~dout~ to a level only after ~din~ showed that level at SAMPLES consecutive rising edges of ~clk~.
+- Rationale :: A contact bounces for milliseconds. Logic that counts presses must see one edge per press, or it counts the bounces.
+
+*** REQ-002 A resting input is passed on
+:PROPERTIES:
+:CUSTOM_ID: REQ-002
+:METHOD:   T
+:TEST:     [[file:debounce_vplan.org::#TC-02][TC-02]], [[file:debounce_vplan.org::#TC-03][TC-03]], [[file:debounce_vplan.org::#TC-05][TC-05]], [[file:debounce_vplan.org::#TC-10][TC-10]]
+:DESIGN:   [[file:debounce_hdd.org::#structure][counter]]
+:ICD:      [[file:debounce_icd.org::#latency][latency]]
+:MONITOR:  p_tw_latency
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: When ~din~ changes and then rests, the block shall change ~dout~ at the LATENCY-th rising edge of ~clk~ after the change.
+- Rationale :: A fixed, known delay lets the user of ~dout~ budget for it. A filter that may or may not answer is worse than none.
+
+*** REQ-003 Changes of the output are spaced
+:PROPERTIES:
+:CUSTOM_ID: REQ-003
+:METHOD:   T
+:TEST:     [[file:debounce_vplan.org::#TC-14][TC-14]]
+:DESIGN:   [[file:debounce_hdd.org::#structure][counter]]
+:ICD:      [[file:debounce_icd.org::#min-interval][minimum interval]]
+:MONITOR:  p_tw_min_interval
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: Two changes of ~dout~ shall be at least INTERVAL clocks apart.
+- Rationale :: The logic behind ~dout~ may be slower than ~clk~ (an edge detector with its own enable); it needs a bound on the shortest pulse.
+
+** Interface
+
+*** REQ-020 Synchronous output
+:PROPERTIES:
+:CUSTOM_ID: REQ-020
+:METHOD:   I
+:TEST:     code inspection
+:DESIGN:   [[file:debounce_hdd.org::#structure][stable]]
+:ICD:      [[file:debounce_icd.org::#ports][ports]]
+:MONITOR:  
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: ~dout~ shall be driven by a flip-flop clocked by ~clk~, with no logic behind it.
+- Rationale :: The user of ~dout~ gets a full clock period and no glitches.
+
+*** REQ-021 Asynchronous input
+:PROPERTIES:
+:CUSTOM_ID: REQ-021
+:METHOD:   I, A
+:TEST:     code inspection; CDC report
+:DESIGN:   [[file:debounce_hdd.org::#cdc][crossing]]
+:ICD:      [[file:debounce_icd.org::#cdc][crossing]]
+:MONITOR:  
+:RESULT:   OPEN
+:STATUS:   approved
+:END:
+- Shall :: ~din~ shall pass two flip-flops marked as a synchronizer for the vendor tools before any logic reads it.
+- Rationale :: The contact has no relation to ~clk~. One flip-flop that goes metastable would feed the counter and the comparator at once.
+
+** Reset and start-up
+
+*** REQ-010 Reset state
+:PROPERTIES:
+:CUSTOM_ID: REQ-010
+:METHOD:   T
+:TEST:     [[file:debounce_vplan.org::#TC-01][TC-01]], [[file:debounce_vplan.org::#TC-13][TC-13]]
+:DESIGN:   [[file:debounce_hdd.org::#clocks][reset]]
+:ICD:      [[file:debounce_icd.org::#reset][reset]]
+:MONITOR:  p_tw_reset
+:RESULT:   PASS
+:STATUS:   verified
+:END:
+- Shall :: ~dout~ shall be low from the clock after ~rst~ is sampled high, whatever ~din~ is, and the count shall start again when ~rst~ is released.
+- Rationale :: The logic behind ~dout~ comes out of the same reset and must not see a level left from before it.
+
+** Performance
+
+*** REQ-030 Clock frequency
+:PROPERTIES:
+:CUSTOM_ID: REQ-030
+:METHOD:   A
+:TEST:     timing report
+:DESIGN:   [[file:debounce_hdd.org::#budget][budget]]
+:ICD:      
+:MONITOR:  
+:RESULT:   OPEN
+:STATUS:   approved
+:END:
+- Shall :: The block shall meet timing at ~G_CLK_HZ~ on the target device.
+- Rationale :: The comparison with C_LIMIT is the only long path; it must not set the clock of the design around it.
+
+* Open points
+:PROPERTIES:
+:CUSTOM_ID: open-points
+:END:
+
+| ID   | Question                                               | Owner | Due | Resolution |
+|------+--------------------------------------------------------+-------+-----+------------|
+| OP-1 | REQ-021: the code was inspected, no CDC report was run |       |     |            |
+| OP-2 | REQ-030: no synthesis was run for this example         |       |     |            |
+
+* Revision history
+
+| Version |       Date | Author | Change          |
+|---------+------------+--------+-----------------|
+|   1.0.0 | 2026-11-10 | Pcsf   | Initial release |
