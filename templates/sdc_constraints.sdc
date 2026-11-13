@@ -21,7 +21,7 @@ set_false_path -from [get_ports rst_n]
 # set_clock_groups -asynchronous -group [get_clocks clk_a] -group [get_clocks clk_b]
 
 ## Intel Quartus: the RTL marks the synchronizer chains with
-## SYNCHRONIZER_IDENTIFICATION (sync_2ff, reset_sync, pulse_sync, ...).  Cut the
+## SYNCHRONIZER_IDENTIFICATION (sync_2ff, reset_sync, pulse_sync, level_sync, ...).  Cut the
 ## path into the first flop and bound the net:
 # set_false_path -to [get_registers {*|sync[0]}]
 # set_net_delay -max 4.0 -from [get_registers {*|data_hold[*]}] -to [get_registers {*|dst_data_r[*]}]

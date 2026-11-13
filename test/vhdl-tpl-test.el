@@ -102,7 +102,7 @@
                   "bfm_axis_pkg" "bfm_avalon_st_pkg" "bfm_axilite_pkg"
                   "bfm_avalon_mm_pkg" "bfm_uart_pkg" "bfm_spi_pkg"
                   "testbench_bfm" "spi_slave" "i2c_master" "i2c_slave"
-                  "bfm_i2c_pkg" "two_process_skeleton" "two_process_tb"
+                  "bfm_i2c_pkg" "two_process_skeleton" "two_process_tb" "level_sync"
                   "doc_icd" "doc_srs" "doc_hdd" "doc_vplan" "doc_test_report"
                   "doc_rtm" "doc_adr" "doc_review" "doc_release"))
     (should (assoc name (vhdl-tpl--list 'templates))))

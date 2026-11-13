@@ -17,7 +17,8 @@ GHDLFLAGS := --std=08 --workdir=$(WORK)
 
 # Analysis order: packages and leaf entities first.
 UNITS := my_pkg tb_util_pkg sb_pkg two_process_pkg two_process entity_arch fsm \
-         counter sync_2ff reset_sync fifo_sync ram_sdp edge_detect top_level \
+         counter sync_2ff level_sync reset_sync fifo_sync ram_sdp edge_detect \
+         top_level \
          debounce pulse_sync fifo_async pwm lfsr shift_reg rom_lut mac_dsp \
          uart_tx uart_rx spi_master spi_slave axis_skid axi_lite_regs \
          avalon_mm_regs bus_sync_handshake i2c_master i2c_slave bfm_axis_pkg \
@@ -25,12 +26,13 @@ UNITS := my_pkg tb_util_pkg sb_pkg two_process_pkg two_process entity_arch fsm \
          bfm_spi_pkg bfm_i2c_pkg entity_arch_tb two_process_tb axis_skid_tb
 # Entities to elaborate on their own (the testbenches are run below).
 ENTITIES := two_process entity_arch fsm counter sync_2ff reset_sync fifo_sync \
-            ram_sdp edge_detect top_level debounce pulse_sync fifo_async pwm \
+            ram_sdp edge_detect top_level debounce pulse_sync level_sync \
+            fifo_async pwm \
             lfsr shift_reg rom_lut mac_dsp uart_tx uart_rx spi_master spi_slave \
             axis_skid axi_lite_regs avalon_mm_regs bus_sync_handshake \
             i2c_master i2c_slave
 TESTBENCHES := entity_arch_tb two_process_tb axis_skid_tb tb_functional \
-               tb_functional_ip tb_bfm tb_i2c tb_util
+               tb_functional_ip tb_bfm tb_i2c tb_util tb_level_sync
 # tb_util_fail with each of these must exit non-zero and print TEST FAILED.
 FAIL_MODES := mismatch limit failure warning
 
@@ -53,7 +55,8 @@ sim: render
 	  $(GHDL) -a $(GHDLFLAGS) $(RENDERED)/$$u.vhd; \
 	done
 	$(GHDL) -a $(GHDLFLAGS) test/tb_functional.vhd test/tb_functional_ip.vhd \
-	  test/tb_bfm.vhd test/tb_i2c.vhd test/tb_util.vhd test/tb_util_fail.vhd
+	  test/tb_bfm.vhd test/tb_i2c.vhd test/tb_util.vhd test/tb_util_fail.vhd \
+	  test/tb_level_sync.vhd
 	set -e; for e in $(ENTITIES); do \
 	  $(GHDL) -e $(GHDLFLAGS) $$e; \
 	done

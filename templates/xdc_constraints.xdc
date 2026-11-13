@@ -38,6 +38,10 @@ set_property CONFIG_VOLTAGE 3.3 [current_design]
 ## pulse_sync: toggle into the destination synchronizer
 # set_max_delay -datapath_only -from [get_cells u_ps/toggle_reg] -to [get_cells u_ps/sync_reg[0]] <T>
 
+## level_sync: the level and its acknowledge, each into a sync_2ff cell
+# set_max_delay -datapath_only -from [get_cells u_ls/hold_reg] -to [get_cells u_ls/u_hold_sync/sync_reg[0]] <T>
+# set_max_delay -datapath_only -from [get_cells u_ls/hold_q_reg] -to [get_cells u_ls/u_ack_sync/sync_reg[0]] <T_src>
+
 ## reset_sync: asynchronous assertion reaches the preset pins
 # set_false_path -to [get_pins u_reset_sync/sync_reg[*]/PRE]
 

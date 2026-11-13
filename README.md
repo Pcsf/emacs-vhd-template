@@ -185,6 +185,7 @@ simulated with GHDL by `make check` (see [Tests](#tests)).
 | `sync_2ff`        | N-flop single-bit synchronizer, `ASYNC_REG` (Xilinx) and `SYNCHRONIZER_IDENTIFICATION` (Intel) |
 | `reset_sync`      | Reset that asserts asynchronously and releases synchronously |
 | `pulse_sync`      | Single-pulse transfer between two clocks (toggle method) |
+| `level_sync`      | Single-bit level follower between two clocks at any clock ratio, active high or low: the output stays active as long as the input does, a pulse shorter than a destination clock period is stretched instead of lost, `src_drop` flags pulses that merged (needs `sync_2ff`). The constraints it needs are in its header and in `xdc_constraints` |
 | `bus_sync_handshake` | Multi-bit word between two clocks: 2-phase req/ack handshake, the word is frozen until the acknowledge is seen; for configuration words and commands. The constraints it needs are in its header and in `xdc_constraints` |
 | `fifo_async`      | Asynchronous FIFO: Gray-coded pointers, registered full/empty, two clocks and resets |
 
@@ -542,10 +543,11 @@ Single braces such as `{ PACKAGE_PIN ... }` in XDC files are literal.
   to FPGA fabric and keeps RAMs inferable. Bring an external asynchronous
   button in through `reset_sync`, as `top_level` does. For asynchronous reset
   in the two-process style, move the reset to the `regs` process.
-- **Clock domain crossings.** Use `sync_2ff` for single-bit levels only. For
-  buses use a Gray-coded async FIFO or a handshake. Constrain the crossing in
-  the XDC/SDC file (`set_false_path`, `set_max_delay -datapath_only`, or
-  `set_clock_groups -asynchronous`).
+- **Clock domain crossings.** Use `sync_2ff` for single-bit levels only, and
+  only when they change slowly against the destination clock; `level_sync`
+  covers the other clock ratios. For buses use a Gray-coded async FIFO or a
+  handshake. Constrain the crossing in the XDC/SDC file (`set_false_path`,
+  `set_max_delay -datapath_only`, or `set_clock_groups -asynchronous`).
 - **Vendor attributes.** Every synchronizer chain carries both `async_reg`
   (Xilinx) and `SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS` (Intel).
   The protocol blocks get theirs from the `sync_2ff` cell they instantiate,
@@ -625,6 +627,10 @@ make check    # all four
   back-pressure, AXI-Lite (byte strobes, held read data, SLVERR), and
   bus_sync_handshake in both directions between unrelated clocks (30 words
   each, the source changes its data while a transfer is in flight).
+- `test/tb_level_sync.vhd`: level_sync in both polarities at three clock
+  ratios (source 18 times faster, 18 times slower, nearly equal): pulses
+  from 1 to 300 source cycles, a burst that ignores `src_busy`, and the
+  source reset with the input held active.
 
 The checks were validated by breaking the templates on purpose (wrong bit
 order, off-by-one counters, dropped skid register, ...) and confirming that
